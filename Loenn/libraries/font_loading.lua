@@ -17,6 +17,7 @@ local languageRegistry = require("language_registry")
 local sceneHandler = require("scene_handler")
 local celesteRender = require("celeste_render")
 local tasks = require("utils.tasks")
+local triggers = require("triggers")
 
 local event = mods.requireFromPlugin("libraries.event")
 local hook = mods.requireFromPlugin("libraries.LuaModHook")
@@ -26,6 +27,39 @@ local library = {}
 
 
 local modSettings = mods.getModSettings("FontLoennPlugin")
+
+
+-- default
+modSettings.fontType = modSettings.fontType or "pico8"
+
+
+-- copied from AurorasLoennPlugin's "copied from AnotherLoenTool lol thanks!!!" lol thanks!!!
+local function checkbox(menu, lang, toggle, active)
+  local item = $(menu):find(item -> item[1] == lang)
+  if not item then
+    item = {}
+    table.insert(menu, item)
+  end
+  item[1] = lang
+  item[2] = toggle
+  item[3] = "checkbox"
+  item[4] = active
+end
+
+
+local MoveDevice = {}
+local function injectCheckboxes()
+    local menubar = require("ui.menubar").menubar
+    local viewMenu = $(menubar):find(menu -> menu[1] == "view")[2]
+    checkbox(viewMenu, "FontLoennPlugin_useHiresPixelFont",
+                function()
+                    modSettings.useHiresPixelFont = not modSettings.useHiresPixelFont
+                    fonts:useFont(modSettings.useHiresPixelFont)
+                end,
+                function() return modSettings.useHiresPixelFont end)
+end
+
+injectCheckboxes()
 
 
 local pico8FontPath = "fonts/pico8_font.png"
@@ -160,6 +194,35 @@ if not drawableText.hooked_by_FontLoennPlugin then
 end
 
 
+-- 为高清像素字体添加阴影
+if not triggers.hooked_by_FontLoennPlugin then
+  triggers.hooked_by_FontLoennPlugin = true
+
+  local orig_trigger_getDrawable = triggers.getDrawable
+  function triggers.getDrawable(name, handler, room, trigger, viewport)
+    if (modSettings.useHiresPixelFont == true) then
+        local drawables, triggersDepth = orig_trigger_getDrawable(name, handler, room, trigger, viewport)
+
+        local displayName = triggers.triggerText(room, trigger)
+        local x = trigger.x or 0
+        local y = trigger.y or 0
+
+        local width = trigger.width or 16
+        local height = trigger.height or 16
+
+
+        local offset = fonts.fontScale
+        local shadowTextDrawable = drawableText.fromText(displayName, x + offset, y + offset, width, height, nil, triggers.triggerFontSize, {0, 0, 0, 1})
+        shadowTextDrawable.depth = triggersDepth - 0.9
+        table.insert(drawables, shadowTextDrawable)
+        return drawables, triggersDepth
+    end
+
+    return orig_trigger_getDrawable(name, handler, room, trigger, viewport)
+  end
+end
+
+
 
 -- 修改标题字体(因为注册时机比较晚, 所以没办法一开始的时候直接切换 loading 字体)
 -- 因为 Loenn 加载场景是先 rerequire 场景的 lua, 然后通过深拷贝实现的, 所以我们得通过索引拿而不是 require 拿
@@ -197,37 +260,6 @@ fonts.onChanged:add(function()
   end
 )
 
--- default
-modSettings.fontType = modSettings.fontType or "pico8"
-
-
--- copied from AurorasLoennPlugin's "copied from AnotherLoenTool lol thanks!!!" lol thanks!!!
-local function checkbox(menu, lang, toggle, active)
-  local item = $(menu):find(item -> item[1] == lang)
-  if not item then
-    item = {}
-    table.insert(menu, item)
-  end
-  item[1] = lang
-  item[2] = toggle
-  item[3] = "checkbox"
-  item[4] = active
-end
-
-
-local MoveDevice = {}
-local function injectCheckboxes()
-    local menubar = require("ui.menubar").menubar
-    local viewMenu = $(menubar):find(menu -> menu[1] == "view")[2]
-    checkbox(viewMenu, "FontLoennPlugin_useHiresPixelFont",
-                function()
-                    modSettings.useHiresPixelFont = not modSettings.useHiresPixelFont
-                    fonts:useFont(modSettings.useHiresPixelFont)
-                end,
-                function() return modSettings.useHiresPixelFont end)
-end
-
-injectCheckboxes()
 
 fonts:useFont(modSettings.useHiresPixelFont)
 

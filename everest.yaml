@@ -1,5 +1,5 @@
 - Name: FontLoennPlugin
-  Version: 0.0.0
+  Version: 0.0.1
   Dependencies:
     - Name: Everest
       Version: 1.3471.0

@@ -188,6 +188,7 @@ if not drawableText.hooked_by_FontLoennPlugin then
 
   local orig_drawableText_fromText = drawableText.fromText
   function drawableText.fromText(text, x, y, width, height, font, fontSize, color)
+    fontSize = fontSize or 0
     local drawable = orig_drawableText_fromText(text, x, y, width, height, font, fontSize * fonts.fontScale, color)
     return drawable
   end

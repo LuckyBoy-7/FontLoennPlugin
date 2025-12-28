@@ -17,7 +17,14 @@ local languageRegistry = require("language_registry")
 local sceneHandler = require("scene_handler")
 local celesteRender = require("celeste_render")
 local tasks = require("utils.tasks")
-local triggers = require("triggers")
+local triggerHandler = require("triggers")
+local utils = require("utils")
+local depths = require("consts.object_depths")
+local drawableRectangle = require("structs.drawable_rectangle")
+local tools = require("tools")
+local state = require("loaded_state")
+local selectionUtils = require("selections")
+local toolUtils = require("tool_utils")
 
 local event = mods.requireFromPlugin("libraries.event")
 local hook = mods.requireFromPlugin("libraries.LuaModHook")
@@ -30,12 +37,17 @@ local modSettings = mods.getModSettings("FontLoennPlugin")
 
 
 -- default
-modSettings.fontType = modSettings.fontType or "pico8"
-
+if modSettings.useHiresPixelFont == nil then
+    modSettings.useHiresPixelFont = false
+elseif modSettings.extrudeOverlappingTriggerText == nil then
+    modSettings.extrudeOverlappingTriggerText = false
+elseif modSettings.highlightTriggerTextOnSelected == nil then
+    modSettings.highlightTriggerTextOnSelected = false
+end
 
 -- copied from AurorasLoennPlugin's "copied from AnotherLoenTool lol thanks!!!" lol thanks!!!
 local function checkbox(menu, lang, toggle, active)
-  local item = $(menu):find(item -> item[1] == lang)
+  local item = $(menu):find(item -> item[1] == lang )
   if not item then
     item = {}
     table.insert(menu, item)
@@ -57,6 +69,18 @@ local function injectCheckboxes()
                     fonts:useFont(modSettings.useHiresPixelFont)
                 end,
                 function() return modSettings.useHiresPixelFont end)
+    checkbox(viewMenu, "FontLoennPlugin_extrudeOverlappingTriggerText",
+                function()
+                    modSettings.extrudeOverlappingTriggerText = not modSettings.extrudeOverlappingTriggerText
+                    clearAllCaches()
+                end,
+                function() return modSettings.extrudeOverlappingTriggerText end)
+    checkbox(viewMenu, "FontLoennPlugin_highlightTriggerTextOnSelected",
+                function()
+                    modSettings.highlightTriggerTextOnSelected = not modSettings.highlightTriggerTextOnSelected
+                    clearAllCaches()
+                end,
+                function() return modSettings.highlightTriggerTextOnSelected end)
 end
 
 injectCheckboxes()
@@ -79,7 +103,6 @@ if not fonts.hooked_by_FontLoennPlugin then
 
 
   function fonts:useFont(hires)
-
     if (hires) then
       self.fontString = hiresFontString
       self.font = hiresFont
@@ -100,6 +123,251 @@ if not fonts.hooked_by_FontLoennPlugin then
   end
 
   fonts.onChanged = event.new()
+end
+
+
+local function getTextRect(text, x, y, width, height, font, fontSize, trim)
+  font = font or love.graphics.getFont()
+  fontSize = fontSize or 1
+
+  if trim ~= false then
+    text = utils.trim(text)
+  end
+
+  -- 文字尺寸
+  local fontHeight = font:getHeight()
+  local fontLineHeight = font:getLineHeight()
+  local _, lines = font:getWrap(text, width / fontSize)
+  local textHeight = (#lines - 1) * (fontHeight * fontLineHeight) + fontHeight
+
+  -- 居中偏移
+  local offsetX = 1
+  local offsetY = math.floor((height - textHeight * fontSize) / 2) + 1
+
+  -- 实际矩形
+  local rectX = x + offsetX
+  local rectY = y + offsetY
+  local rectWidth = width
+  local rectHeight = textHeight * fontSize
+
+  return {
+    x = rectX,
+    y = rectY,
+    width = rectWidth,
+    height = rectHeight,
+  }
+end
+
+-- 通过传入的矩形返回通过碰撞模拟后每个矩形的位置
+-- retval
+-- {
+--    {dx, dy},
+--    {dx, dy},
+--    {dx, dy},
+--}
+local function getExtrudedRects(rects)
+  local maxIterations = 5
+  local padding = 3
+
+  -- 特判:处理完全重叠的矩形
+  local overlapGroups = {}  -- 存储重叠组
+  local processed = {}      -- 标记已处理的矩形
+  
+  for i = 1, #rects do
+    if not processed[i] then
+      local group = {i}
+      processed[i] = true
+      
+      -- 找出所有与 i 完全重叠的矩形
+      for j = i + 1, #rects do
+        if not processed[j] then
+          local a, b = rects[i], rects[j]
+          -- 检测完全重叠(位置和尺寸都相同)
+          if a.x == b.x and a.y == b.y and a.width == b.width and a.height == b.height then
+            table.insert(group, j)
+            processed[j] = true
+          end
+        end
+      end
+      
+      if #group > 1 then
+        table.insert(overlapGroups, group)
+      end
+    end
+  end
+  
+  -- 对每个重叠组进行预处理:根据宽高比排列
+  for _, group in ipairs(overlapGroups) do
+    -- 根据排序结果分散矩形
+    local baseRect = rects[group[1]]
+    for i = 1, #group do
+      local idx = group[i]
+      local rect = rects[idx]
+      
+      -- 根据矩形形状决定偏移方向
+      if rect.height > rect.width then
+        local totalWidth = (padding + rect.width) * #group - padding
+        local offsetX = -totalWidth / 2 + (rect.width / 2) + (i - 1) * (padding + rect.width)
+        -- 瘦矩形:水平排列
+        rect.x = rect.x + offsetX
+        rect.offsetX = (rect.offsetX or 0) + offsetX
+      else
+        local totalHeight = (padding + rect.height) * #group - padding
+        local offsetY = -totalHeight / 2 + (rect.height / 2) + (i - 1) * (padding + rect.height)
+        -- 高矩形或正方形:垂直排列
+        rect.y = rect.y + offsetY
+        rect.offsetY = (rect.offsetY or 0) + offsetY
+      end
+    end
+  end
+
+  -- 原有的碰撞模拟迭代
+  for iter = 1, maxIterations do
+    local moveMap = {}
+    for i = 1, #rects do
+      moveMap[i] = { dx = 0, dy = 0, xCount = 0, yCount = 0 }
+    end
+
+    for i = 1, #rects do
+      local a = rects[i]
+      for j = i + 1, #rects do
+        local b = rects[j]
+
+        local overlapX = math.min(a.x + a.width, b.x + b.width) - math.max(a.x, b.x)
+        local overlapY = math.min(a.y + a.height, b.y + b.height) - math.max(a.y, b.y)
+
+        if overlapX > 0 and overlapY > 0 then
+          if overlapX < overlapY then
+            local move = overlapX / 2 + padding
+            if a.x < b.x then
+              moveMap[i].dx = moveMap[i].dx - move
+              moveMap[j].dx = moveMap[j].dx + move
+            else
+              moveMap[i].dx = moveMap[i].dx + move
+              moveMap[j].dx = moveMap[j].dx - move
+            end
+
+            moveMap[i].xCount = moveMap[i].xCount + 1
+            moveMap[j].xCount = moveMap[j].xCount + 1
+          else
+            local move = overlapY / 2 + padding
+            if a.y < b.y then
+              moveMap[i].dy = moveMap[i].dy - move
+              moveMap[j].dy = moveMap[j].dy + move
+            else
+              moveMap[i].dy = moveMap[i].dy + move
+              moveMap[j].dy = moveMap[j].dy - move
+            end
+            moveMap[i].yCount = moveMap[i].yCount + 1
+            moveMap[j].yCount = moveMap[j].yCount + 1
+          end
+        end
+      end
+    end
+
+    for i = 1, #rects do
+      local dx = 0
+      local dy = 0
+      local m = moveMap[i]
+      if m.xCount > 0 then
+        dx = m.dx / m.xCount
+      elseif m.yCount > 0 then
+        dy = m.dy / m.yCount
+      end
+
+      rects[i].offsetX = (rects[i].offsetX or 0) + dx
+      rects[i].offsetY = (rects[i].offsetY or 0) + dy
+      rects[i].x = rects[i].x + dx
+      rects[i].y = rects[i].y + dy
+    end
+  end
+
+  return rects
+end
+
+local triggerToTextOffsetRect = {}
+local roomNameToHaveInitialized = {}
+local shouldRedrawRoom = nil
+
+local function checkShouldRebuildTriggerTextOffset(room)
+  local roomName = room.name
+  -- 如果还没初始化
+  if roomNameToHaveInitialized[roomName] == nil then
+    roomNameToHaveInitialized[roomName] = true
+    return true
+  end
+
+  if shouldRedrawRoom == nil then
+    return false
+  end
+  if shouldRedrawRoom.name == roomName then
+    shouldRedrawRoom = nil
+    return true
+  end
+  return false
+end
+
+local function tryUpdateTriggerTextOffset(room, triggersList)
+  if modSettings.extrudeOverlappingTriggerText == false then
+    return
+  end
+  if checkShouldRebuildTriggerTextOffset(room) == false then
+    return
+  end
+
+  local rects = {}
+
+  for _, trigger in ipairs(triggersList) do
+    local displayName = triggerHandler.triggerText(room, trigger)
+
+
+    local x = trigger.x or 0
+    local y = trigger.y or 0
+
+    local width = trigger.width or 16
+    local height = trigger.height or 16
+    local triggerTextRect = getTextRect(displayName, x, y, width, height, fonts.font,
+      fonts.fontScale * triggerHandler.triggerFontSize)
+    table.insert(rects, triggerTextRect)
+  end
+
+  local extrudedRects = getExtrudedRects(rects)
+  for i, trigger in ipairs(triggersList) do
+    triggerToTextOffsetRect[trigger] = extrudedRects[i]
+  end
+end
+
+
+if not rawget(triggerHandler, "drawSelected_hooked_by_FontLoennPlugin") then
+  rawset(triggerHandler, "drawSelected_hooked_by_FontLoennPlugin", true)
+
+  local orig_drawSelected = triggerHandler.drawSelected
+  function triggerHandler.drawSelected(room, layer, trigger, color)
+    shouldRedrawRoom = room
+    orig_drawSelected(room, layer, trigger, color)
+  end
+end
+
+
+
+-- 在 task 创建完 batch 后, 尝试调整 trigger 字体的位置
+if not rawget(celesteRender, "getTriggerBatch_hooked_by_FontLoennPlugin") then
+  rawset(celesteRender, "getTriggerBatch_hooked_by_FontLoennPlugin", true)
+
+  local orig_getTriggerBatch = celesteRender.getTriggerBatch
+  function celesteRender.getTriggerBatch(room, triggersList, viewport, registeredTriggers, forceRedraw)
+    tryUpdateTriggerTextOffset(room, triggersList)
+    local orderedBatches = orig_getTriggerBatch(room, triggersList, viewport, registeredTriggers, forceRedraw)
+    return orderedBatches
+  end
+
+  -- 重新覆盖方法
+  local depthBatchingFunctions = hook.get_local(celesteRender.forceRoomBatchRender, "depthBatchingFunctions")
+  for _, value in ipairs(depthBatchingFunctions) do
+    if value[1] == "Triggers" then
+      value[3] = celesteRender.getTriggerBatch
+    end
+  end
 end
 
 -- 在创建 canvas 和 绘制 的时候根据字号改变缩放倍率
@@ -169,7 +437,7 @@ if not rawget(celesteRender, "drawRoom_hooked_by_FontLoennPlugin") then
     local redraw = selected or hook.get_local(celesteRender.drawRoom, "ALWAYS_REDRAW_UNSELECTED_ROOMS")
 
     love.graphics.draw = function(texture)
-      if (redraw) then
+      if redraw then
         orig_love_graphics_draw(texture)
         return
       end
@@ -195,31 +463,147 @@ if not drawableText.hooked_by_FontLoennPlugin then
 end
 
 
+-- 记录 placement 获取 drawable 的时机, 因为 placement draw 的时候会把像素颜色设为白色, 所以阴影反而会导致糊掉, 所以此时不渲染阴影
+local duringPlacement = false
+local function tryHookPlacement()
+  local placement = tools.tools["placement"]
+  if not placement then
+    return
+  end
+  if not placement.hooked_by_FontLoennPlugin then
+    placement.hooked_by_FontLoennPlugin = true
+
+    local orig_update = placement.update
+    function placement.update(dt)
+      duringPlacement = true
+      orig_update(dt)
+      duringPlacement = false
+    end
+  end
+end
+
+
+local function tryHookSelection()
+  local selection = tools.tools["selection"]
+  if not selection then
+    return
+  end
+  hook.hook_local_func(selection.mousereleased, "selectionFinished", function(orig, x, y, fromClick)
+      local room = state.getSelectedRoom()
+      orig(x, y, fromClick)
+      -- rebuild batch
+      -- 由于实现上有点小问题, 导致如果什么都不选 selection.getSelectionTargets() 为空拿不到要重绘的 layer 反而导致没有重绘, 所以我们手动使用另一个函数
+      -- selectionUtils.redrawTargetLayers(room, selection.getSelectionTargets())
+      toolUtils.redrawTargetLayer(room, {"triggers"})
+  end)
+
+
+  local layerSortingPriority = hook.get_local(selectionUtils.orderSelectionsByScore, "layerSortingPriority")
+  function selectionUtils.orderSelectionsByScore(selections)
+      table.sort(selections, function(lhs, rhs)
+        local lhsPriority = layerSortingPriority[lhs.layer] or 1
+        local rhsPriority = layerSortingPriority[rhs.layer] or 1
+
+        if lhsPriority ~= rhsPriority then
+            return lhsPriority > rhsPriority
+        end
+
+        local lhsArea = lhs.width * lhs.height
+        local rhsArea = rhs.width * rhs.height
+
+        if lhsArea ~= rhsArea then
+            return lhsArea < rhsArea
+        end
+
+        -- 如果层级和面积都一样，强制按 ID 排序，保证稳定性(使得 trigger 叠一起的时候能以更舒服的顺序选择)
+        -- 注意：这里假设 lhs.item 存在且有 _id 属性
+        local lhsId = (lhs.item and lhs.item._id) or 0
+        local rhsId = (rhs.item and rhs.item._id) or 0
+        return lhsId < rhsId
+    end)
+
+    return selections
+  end
+end
+
+
+local editor = sceneHandler.scenes["Editor"]
+if not rawget(editor, "hooked_by_FontLoennPlugin") then
+  editor.hooked_by_FontLoennPlugin = true
+
+  local orig_firstEnter = editor.firstEnter
+  function editor.firstEnter(self)
+    orig_firstEnter(self)
+    tryHookPlacement()
+    tryHookSelection()
+  end
+end
+
+local function isItemSelected(item, selections)
+    if not selections then
+        return false
+    end
+    
+    for _, target in ipairs(selections.getSelectionTargets()) do
+        if target.item == item then
+            return true
+        end
+    end
+    
+    return false
+end
 -- 为高清像素字体添加阴影
-if not triggers.hooked_by_FontLoennPlugin then
-  triggers.hooked_by_FontLoennPlugin = true
+-- 在 task 创建完 batch 后, 尝试调整 trigger 字体的位置(不知道 lua 有没有类似 il 一样的插入方式, 感觉还是直接整体替换方便点, 反正我一个版本更一版应该问题不大())
+if not triggerHandler.hooked_by_FontLoennPlugin then
+  triggerHandler.hooked_by_FontLoennPlugin = true
 
-  local orig_trigger_getDrawable = triggers.getDrawable
-  function triggers.getDrawable(name, handler, room, trigger, viewport)
-    if (modSettings.useHiresPixelFont == true) then
-        local drawables, triggersDepth = orig_trigger_getDrawable(name, handler, room, trigger, viewport)
-
-        local displayName = triggers.triggerText(room, trigger)
-        local x = trigger.x or 0
-        local y = trigger.y or 0
-
-        local width = trigger.width or 16
-        local height = trigger.height or 16
+  local orig_trigger_getDrawable = triggerHandler.getDrawable
+  function triggerHandler.getDrawable(name, handler, room, trigger, viewport)
+    local addShadow = modSettings.useHiresPixelFont == true and not duringPlacement
+    local extrudeTriggerText = modSettings.extrudeOverlappingTriggerText
 
 
-        local offset = fonts.fontScale
-        local shadowTextDrawable = drawableText.fromText(displayName, x + offset, y + offset, width, height, nil, triggers.triggerFontSize, {0, 0, 0, 1})
-        shadowTextDrawable.depth = triggersDepth - 0.9
-        table.insert(drawables, shadowTextDrawable)
-        return drawables, triggersDepth
+    local displayName = triggerHandler.triggerText(room, trigger)
+
+    local x = trigger.x or 0
+    local y = trigger.y or 0
+
+
+    local width = trigger.width or 16
+    local height = trigger.height or 16
+
+    local fillColor, borderColor, textColor = triggerHandler.triggerColor(room, trigger)
+
+    -- highlight
+    if modSettings.highlightTriggerTextOnSelected and isItemSelected(trigger, tools.tools["selection"]) then
+      textColor = {1, 1, 0, 1}      
+    end
+    local borderedRectangle = drawableRectangle.fromRectangle("bordered", x, y, width, height, fillColor, borderColor)
+
+    -- extrude
+    if (extrudeTriggerText and triggerToTextOffsetRect[trigger] ~= nil) then
+      local dx, dy = triggerToTextOffsetRect[trigger].offsetX, triggerToTextOffsetRect[trigger].offsetY
+      x = x + dx
+      y = y + dy
     end
 
-    return orig_trigger_getDrawable(name, handler, room, trigger, viewport)
+    local textDrawable = drawableText.fromText(displayName, x, y, width, height, nil, triggerHandler.triggerFontSize,
+      textColor)
+    local offset = fonts.fontScale
+    -- shadow
+    local shadowTextDrawable = drawableText.fromText(displayName, x + offset, y + offset, width, height, nil,
+      triggerHandler.triggerFontSize, { 0, 0, 0, 1 })
+
+    local drawables = borderedRectangle:getDrawableSprite()
+    table.insert(drawables, textDrawable)
+    if addShadow then
+      table.insert(drawables, shadowTextDrawable)
+    end
+
+    textDrawable.depth = depths.triggers - 1
+    shadowTextDrawable.depth = depths.triggers - 0.9
+
+    return drawables, depths.triggers
   end
 end
 
@@ -245,20 +629,31 @@ end
 
 
 
+function clearExtrudedTriggerTextCache()
+  triggerToTextOffsetRect = {}
+  roomNameToHaveInitialized = {}
+  shouldRedrawRoom = nil
+end
+
+function clearAllCaches()
+  celesteRender.clearBatchingTasks()
+  celesteRender.invalidateRoomCache()
+  clearExtrudedTriggerTextCache()
+end
+
 -- events
 fonts.onChanged:add(function()
-    celesteRender.clearBatchingTasks()
-    celesteRender.invalidateRoomCache()
+  clearAllCaches()
 end
 )
 
 fonts.onChanged:add(function()
-    if (loading == nil) then
-      return
-    end
-    local language = languageRegistry.getLanguage()
-    loading:setText(language.scenes.loading.loading)
+  if (loading == nil) then
+    return
   end
+  local language = languageRegistry.getLanguage()
+  loading:setText(language.scenes.loading.loading)
+end
 )
 
 

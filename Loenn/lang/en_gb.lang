@@ -1,1 +1,3 @@
 ui.menubar.FontLoennPlugin_useHiresPixelFont=Use Hires Pixel Font
+ui.menubar.FontLoennPlugin_extrudeOverlappingTriggerText=Extrude Trigger Text When Overlapping
+ui.menubar.FontLoennPlugin_highlightTriggerTextOnSelected=Highlight Trigger Text On Selected

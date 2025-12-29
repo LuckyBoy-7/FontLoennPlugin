@@ -43,6 +43,8 @@ elseif modSettings.extrudeOverlappingTriggerText == nil then
     modSettings.extrudeOverlappingTriggerText = false
 elseif modSettings.highlightTriggerTextOnSelected == nil then
     modSettings.highlightTriggerTextOnSelected = false
+elseif modSettings.addSadowToFont == nil then
+    modSettings.addSadowToFont = false
 end
 
 -- copied from AurorasLoennPlugin's "copied from AnotherLoenTool lol thanks!!!" lol thanks!!!
@@ -63,24 +65,34 @@ local MoveDevice = {}
 local function injectCheckboxes()
     local menubar = require("ui.menubar").menubar
     local viewMenu = $(menubar):find(menu -> menu[1] == "view")[2]
-    checkbox(viewMenu, "FontLoennPlugin_useHiresPixelFont",
+    local fontLoennPluginDropdown = {}
+    local fontLoennPluginGroup = {"FontLoennPlugin", fontLoennPluginDropdown}
+
+    table.insert(viewMenu, fontLoennPluginGroup)
+    checkbox(fontLoennPluginDropdown, "FontLoennPlugin_useHiresPixelFont",
                 function()
                     modSettings.useHiresPixelFont = not modSettings.useHiresPixelFont
                     fonts:useFont(modSettings.useHiresPixelFont)
                 end,
                 function() return modSettings.useHiresPixelFont end)
-    checkbox(viewMenu, "FontLoennPlugin_extrudeOverlappingTriggerText",
+    checkbox(fontLoennPluginDropdown, "FontLoennPlugin_extrudeOverlappingTriggerText",
                 function()
                     modSettings.extrudeOverlappingTriggerText = not modSettings.extrudeOverlappingTriggerText
                     clearAllCaches()
                 end,
                 function() return modSettings.extrudeOverlappingTriggerText end)
-    checkbox(viewMenu, "FontLoennPlugin_highlightTriggerTextOnSelected",
+    checkbox(fontLoennPluginDropdown, "FontLoennPlugin_highlightTriggerTextOnSelected",
                 function()
                     modSettings.highlightTriggerTextOnSelected = not modSettings.highlightTriggerTextOnSelected
                     clearAllCaches()
                 end,
                 function() return modSettings.highlightTriggerTextOnSelected end)
+     checkbox(fontLoennPluginDropdown, "FontLoennPlugin_addSadowToFont",
+                function()
+                    modSettings.addSadowToFont = not modSettings.addSadowToFont
+                    clearAllCaches()
+                end,
+                function() return modSettings.addSadowToFont end)
 end
 
 injectCheckboxes()
@@ -492,7 +504,7 @@ local function tryHookSelection()
       local room = state.getSelectedRoom()
       orig(x, y, fromClick)
       -- rebuild batch
-      -- 由于实现上有点小问题, 导致如果什么都不选 selection.getSelectionTargets() 为空拿不到要重绘的 layer 反而导致没有重绘, 所以我们手动使用另一个函数
+      -- 如果什么都不选 selection.getSelectionTargets() 为空拿不到要重绘的 layer 反而导致没有重绘, 所以我们手动使用另一个函数
       -- selectionUtils.redrawTargetLayers(room, selection.getSelectionTargets())
       toolUtils.redrawTargetLayer(room, {"triggers"})
   end)
@@ -559,7 +571,7 @@ if not triggerHandler.hooked_by_FontLoennPlugin then
 
   local orig_trigger_getDrawable = triggerHandler.getDrawable
   function triggerHandler.getDrawable(name, handler, room, trigger, viewport)
-    local addShadow = modSettings.useHiresPixelFont == true and not duringPlacement
+    local addShadow = modSettings.addSadowToFont and not duringPlacement
     local extrudeTriggerText = modSettings.extrudeOverlappingTriggerText
 
 
@@ -589,19 +601,19 @@ if not triggerHandler.hooked_by_FontLoennPlugin then
 
     local textDrawable = drawableText.fromText(displayName, x, y, width, height, nil, triggerHandler.triggerFontSize,
       textColor)
-    local offset = fonts.fontScale
-    -- shadow
-    local shadowTextDrawable = drawableText.fromText(displayName, x + offset, y + offset, width, height, nil,
-      triggerHandler.triggerFontSize, { 0, 0, 0, 1 })
-
+    textDrawable.depth = depths.triggers - 1
+   
     local drawables = borderedRectangle:getDrawableSprite()
     table.insert(drawables, textDrawable)
     if addShadow then
+       -- shadow
+      local offset = fonts.fontScale
+      local shadowTextDrawable = drawableText.fromText(displayName, x + offset, y + offset, width, height, nil,
+      triggerHandler.triggerFontSize, { 0, 0, 0, 1 })
+      shadowTextDrawable.depth = depths.triggers - 0.9
       table.insert(drawables, shadowTextDrawable)
     end
 
-    textDrawable.depth = depths.triggers - 1
-    shadowTextDrawable.depth = depths.triggers - 0.9
 
     return drawables, depths.triggers
   end

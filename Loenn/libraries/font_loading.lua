@@ -43,8 +43,8 @@ elseif modSettings.extrudeOverlappingTriggerText == nil then
     modSettings.extrudeOverlappingTriggerText = false
 elseif modSettings.highlightTriggerTextOnSelected == nil then
     modSettings.highlightTriggerTextOnSelected = false
-elseif modSettings.addSadowToFont == nil then
-    modSettings.addSadowToFont = false
+elseif modSettings.addShadowToFont == nil then
+    modSettings.addShadowToFont = false
 end
 
 -- copied from AurorasLoennPlugin's "copied from AnotherLoenTool lol thanks!!!" lol thanks!!!
@@ -87,12 +87,12 @@ local function injectCheckboxes()
                     clearAllCaches()
                 end,
                 function() return modSettings.highlightTriggerTextOnSelected end)
-     checkbox(fontLoennPluginDropdown, "FontLoennPlugin_addSadowToFont",
+     checkbox(fontLoennPluginDropdown, "FontLoennPlugin_addShadowToFont",
                 function()
-                    modSettings.addSadowToFont = not modSettings.addSadowToFont
+                    modSettings.addShadowToFont = not modSettings.addShadowToFont
                     clearAllCaches()
                 end,
-                function() return modSettings.addSadowToFont end)
+                function() return modSettings.addShadowToFont end)
 end
 
 injectCheckboxes()
@@ -571,7 +571,7 @@ if not triggerHandler.hooked_by_FontLoennPlugin then
 
   local orig_trigger_getDrawable = triggerHandler.getDrawable
   function triggerHandler.getDrawable(name, handler, room, trigger, viewport)
-    local addShadow = modSettings.addSadowToFont and not duringPlacement
+    local addShadow = modSettings.addShadowToFont and not duringPlacement
     local extrudeTriggerText = modSettings.extrudeOverlappingTriggerText
 
 

@@ -2,5 +2,6 @@ ui.menubar.FontLoennPlugin_useHiresPixelFont=Use Hires Pixel Font
 ui.menubar.FontLoennPlugin_extrudeOverlappingTriggerText=Extrude Trigger Text When Overlapping
 ui.menubar.FontLoennPlugin_highlightTriggerTextOnSelected=Highlight Trigger Text On Selected
 ui.menubar.FontLoennPlugin_addShadowToFont=Add Shadow To Font
+ui.menubar.FontLoennPlugin_stretchTextOnSmallTrigger=Stretch Text On Small Trigger
 
 ui.menubar.FontLoennPlugin=Font Loenn Plugin

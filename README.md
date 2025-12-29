@@ -1,13 +1,14 @@
-本来是要给 Loenn 写一个高清字体的, 但是被拒了只能转战 mod, 没想到生产力意外的高反而写了更多更好玩的东西, 因祸得福了属于是, 同时非常感谢 sap, weg, 底龙提供的建议和帮助 mmc heart
+本来是要给 Loenn 写一个高清字体的, 但是被拒了只能转战 mod, 没想到生产力意外的高反而写了更多更好玩的东西, 因祸得福了属于是, 同时非常感谢 sap, weg, 底龙, Strawberry Jam 提供的建议和帮助 mmc heart
 
 ## 使用
 
-你可以通过顶部导航栏的 View -> Font Loenn Plugin 来选择性的开启某些功能
+你可以通过顶部导航栏的 **View -> Font Loenn Plugin** 来选择性的开启某些功能
 
-* Use Hires Pixel Font: 是否开启高清像素字体
-* Extrude Trigger Text When Overlapping: 是否自动分开 Trigger 文本当它们挤在一起的时候
-* Highlight Trigger Text On Selected: 是否高亮(标黄) Trigger 文本当你选中他们的时候
-* Add Shadow To Font: 是否为 Trigger 文本添加阴影
+* **Use Hires Pixel Font**: 是否开启高清像素字体
+* **Extrude Trigger Text When Overlapping**: 当 trigger 文本挤在一起的时候, 是否自动将它们分开
+* **Highlight Trigger Text On Selected**: 当你选中 trigger 的时候是否高亮(标黄)其文本
+* **Add Shadow To Font**: 是否为 Trigger 文本添加阴影
+* **Stretch Text On Small Trigger**: 当 trigger 特别小的时候是否拉伸其文本使其更易阅读
 
 ### 注意
 
@@ -23,6 +24,7 @@ You can selectively enable features via the menu: **View → Font Loenn Plugin**
 * **Extrude Trigger Text When Overlapping**: Automatically separates trigger texts when they overlap
 * **Highlight Trigger Text On Selected**: Highlights (in yellow) trigger text when it is selected
 * **Add Shadow To Font**: Adds a shadow to trigger text
+* **Stretch Text On Small Trigger**: Whether to stretch trigger text to make it readable when the trigger is really tiny!
 
 ### Notes
 

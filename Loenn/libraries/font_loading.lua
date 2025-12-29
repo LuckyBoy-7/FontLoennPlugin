@@ -28,9 +28,11 @@ local toolUtils = require("tool_utils")
 
 local event = mods.requireFromPlugin("libraries.event")
 local hook = mods.requireFromPlugin("libraries.LuaModHook")
+local collision = mods.requireFromPlugin("libraries.collision")
 
 
 local library = {}
+
 
 
 local modSettings = mods.getModSettings("FontLoennPlugin")
@@ -45,6 +47,8 @@ elseif modSettings.highlightTriggerTextOnSelected == nil then
     modSettings.highlightTriggerTextOnSelected = false
 elseif modSettings.addShadowToFont == nil then
     modSettings.addShadowToFont = false
+elseif modSettings.stretchTextOnSmallTrigger == nil then
+    modSettings.stretchTextOnSmallTrigger = false
 end
 
 -- copied from AurorasLoennPlugin's "copied from AnotherLoenTool lol thanks!!!" lol thanks!!!
@@ -93,6 +97,12 @@ local function injectCheckboxes()
                     clearAllCaches()
                 end,
                 function() return modSettings.addShadowToFont end)
+      checkbox(fontLoennPluginDropdown, "FontLoennPlugin_stretchTextOnSmallTrigger",
+                function()
+                    modSettings.stretchTextOnSmallTrigger = not modSettings.stretchTextOnSmallTrigger
+                    clearAllCaches()
+                end,
+                function() return modSettings.stretchTextOnSmallTrigger end)
 end
 
 injectCheckboxes()
@@ -137,8 +147,34 @@ if not fonts.hooked_by_FontLoennPlugin then
   fonts.onChanged = event.new()
 end
 
+local StretchTextSizeThreshold2 = 32
+local StretchTextSizeThreshold4 = 16
+
+local function tryStretchTriggerText(x, y, width, height)
+  if modSettings.stretchTextOnSmallTrigger then
+    if width < StretchTextSizeThreshold4 then
+      x = x - width * 1.5
+      width = width * 4
+    elseif width < StretchTextSizeThreshold2 then
+      x = x - width / 2
+      width = width * 2
+    end
+
+    if height < StretchTextSizeThreshold4 then
+       y = y - height * 1.5
+      height = height * 4
+    elseif height < StretchTextSizeThreshold2 then
+      y = y - height / 2
+      height = height * 2
+    end
+  end
+  return x, y, width, height
+end
+
 
 local function getTextRect(text, x, y, width, height, font, fontSize, trim)
+  x, y, width, height = tryStretchTriggerText(x, y, width, height)
+  
   font = font or love.graphics.getFont()
   fontSize = fontSize or 1
 
@@ -146,20 +182,31 @@ local function getTextRect(text, x, y, width, height, font, fontSize, trim)
     text = utils.trim(text)
   end
 
+
   -- 文字尺寸
   local fontHeight = font:getHeight()
   local fontLineHeight = font:getLineHeight()
   local _, lines = font:getWrap(text, width / fontSize)
   local textHeight = (#lines - 1) * (fontHeight * fontLineHeight) + fontHeight
 
+  -- 计算实际文本宽度（取所有行中最宽的）
+  local maxWidth = 0
+  for i = 1, #lines do
+    local lineWidth = font:getWidth(lines[i])
+    if lineWidth > maxWidth then
+      maxWidth = lineWidth
+    end
+  end
+
   -- 居中偏移
-  local offsetX = 1
+  local actualWidth = maxWidth * fontSize
+  local offsetX = math.floor((width - actualWidth) / 2) + 1
   local offsetY = math.floor((height - textHeight * fontSize) / 2) + 1
 
   -- 实际矩形
   local rectX = x + offsetX
   local rectY = y + offsetY
-  local rectWidth = width
+  local rectWidth = actualWidth  -- 使用实际宽度
   local rectHeight = textHeight * fontSize
 
   return {
@@ -168,133 +215,6 @@ local function getTextRect(text, x, y, width, height, font, fontSize, trim)
     width = rectWidth,
     height = rectHeight,
   }
-end
-
--- 通过传入的矩形返回通过碰撞模拟后每个矩形的位置
--- retval
--- {
---    {dx, dy},
---    {dx, dy},
---    {dx, dy},
---}
-local function getExtrudedRects(rects)
-  local maxIterations = 5
-  local padding = 3
-
-  -- 特判:处理完全重叠的矩形
-  local overlapGroups = {}  -- 存储重叠组
-  local processed = {}      -- 标记已处理的矩形
-  
-  for i = 1, #rects do
-    if not processed[i] then
-      local group = {i}
-      processed[i] = true
-      
-      -- 找出所有与 i 完全重叠的矩形
-      for j = i + 1, #rects do
-        if not processed[j] then
-          local a, b = rects[i], rects[j]
-          -- 检测完全重叠(位置和尺寸都相同)
-          if a.x == b.x and a.y == b.y and a.width == b.width and a.height == b.height then
-            table.insert(group, j)
-            processed[j] = true
-          end
-        end
-      end
-      
-      if #group > 1 then
-        table.insert(overlapGroups, group)
-      end
-    end
-  end
-  
-  -- 对每个重叠组进行预处理:根据宽高比排列
-  for _, group in ipairs(overlapGroups) do
-    -- 根据排序结果分散矩形
-    local baseRect = rects[group[1]]
-    for i = 1, #group do
-      local idx = group[i]
-      local rect = rects[idx]
-      
-      -- 根据矩形形状决定偏移方向
-      if rect.height > rect.width then
-        local totalWidth = (padding + rect.width) * #group - padding
-        local offsetX = -totalWidth / 2 + (rect.width / 2) + (i - 1) * (padding + rect.width)
-        -- 瘦矩形:水平排列
-        rect.x = rect.x + offsetX
-        rect.offsetX = (rect.offsetX or 0) + offsetX
-      else
-        local totalHeight = (padding + rect.height) * #group - padding
-        local offsetY = -totalHeight / 2 + (rect.height / 2) + (i - 1) * (padding + rect.height)
-        -- 高矩形或正方形:垂直排列
-        rect.y = rect.y + offsetY
-        rect.offsetY = (rect.offsetY or 0) + offsetY
-      end
-    end
-  end
-
-  -- 原有的碰撞模拟迭代
-  for iter = 1, maxIterations do
-    local moveMap = {}
-    for i = 1, #rects do
-      moveMap[i] = { dx = 0, dy = 0, xCount = 0, yCount = 0 }
-    end
-
-    for i = 1, #rects do
-      local a = rects[i]
-      for j = i + 1, #rects do
-        local b = rects[j]
-
-        local overlapX = math.min(a.x + a.width, b.x + b.width) - math.max(a.x, b.x)
-        local overlapY = math.min(a.y + a.height, b.y + b.height) - math.max(a.y, b.y)
-
-        if overlapX > 0 and overlapY > 0 then
-          if overlapX < overlapY then
-            local move = overlapX / 2 + padding
-            if a.x < b.x then
-              moveMap[i].dx = moveMap[i].dx - move
-              moveMap[j].dx = moveMap[j].dx + move
-            else
-              moveMap[i].dx = moveMap[i].dx + move
-              moveMap[j].dx = moveMap[j].dx - move
-            end
-
-            moveMap[i].xCount = moveMap[i].xCount + 1
-            moveMap[j].xCount = moveMap[j].xCount + 1
-          else
-            local move = overlapY / 2 + padding
-            if a.y < b.y then
-              moveMap[i].dy = moveMap[i].dy - move
-              moveMap[j].dy = moveMap[j].dy + move
-            else
-              moveMap[i].dy = moveMap[i].dy + move
-              moveMap[j].dy = moveMap[j].dy - move
-            end
-            moveMap[i].yCount = moveMap[i].yCount + 1
-            moveMap[j].yCount = moveMap[j].yCount + 1
-          end
-        end
-      end
-    end
-
-    for i = 1, #rects do
-      local dx = 0
-      local dy = 0
-      local m = moveMap[i]
-      if m.xCount > 0 then
-        dx = m.dx / m.xCount
-      elseif m.yCount > 0 then
-        dy = m.dy / m.yCount
-      end
-
-      rects[i].offsetX = (rects[i].offsetX or 0) + dx
-      rects[i].offsetY = (rects[i].offsetY or 0) + dy
-      rects[i].x = rects[i].x + dx
-      rects[i].y = rects[i].y + dy
-    end
-  end
-
-  return rects
 end
 
 local triggerToTextOffsetRect = {}
@@ -343,7 +263,8 @@ local function tryUpdateTriggerTextOffset(room, triggersList)
     table.insert(rects, triggerTextRect)
   end
 
-  local extrudedRects = getExtrudedRects(rects)
+  local roomRect = {x = 0, y = 0, width = room.width, height = room.height}
+  local extrudedRects = collision.getExtrudedRects(rects, roomRect)
   for i, trigger in ipairs(triggersList) do
     triggerToTextOffsetRect[trigger] = extrudedRects[i]
   end
@@ -581,7 +502,7 @@ if not triggerHandler.hooked_by_FontLoennPlugin then
     local y = trigger.y or 0
 
 
-    local width = trigger.width or 16
+    local width = (trigger.width or 16)
     local height = trigger.height or 16
 
     local fillColor, borderColor, textColor = triggerHandler.triggerColor(room, trigger)
@@ -599,6 +520,8 @@ if not triggerHandler.hooked_by_FontLoennPlugin then
       y = y + dy
     end
 
+    x, y, width, height = tryStretchTriggerText(x, y, width, height)
+    
     local textDrawable = drawableText.fromText(displayName, x, y, width, height, nil, triggerHandler.triggerFontSize,
       textColor)
     textDrawable.depth = depths.triggers - 1

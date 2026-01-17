@@ -25,6 +25,7 @@ local tools = require("tools")
 local state = require("loaded_state")
 local selectionUtils = require("selections")
 local toolUtils = require("tool_utils")
+local debugUtils = require("debug_utils")
 
 local event = mods.requireFromPlugin("libraries.event")
 local hook = mods.requireFromPlugin("libraries.LuaModHook")
@@ -312,6 +313,7 @@ if not rawget(celesteRender, "getTriggerBatch_hooked_by_FontLoennPlugin") then
   end
 end
 
+
 -- 在创建 canvas 和 绘制 的时候根据字号改变缩放倍率
 local roomCache = hook.get_local(celesteRender.releaseBatch, "roomCache")
 
@@ -468,7 +470,6 @@ local function tryHookSelection()
   end
 end
 
-
 local editor = sceneHandler.scenes["Editor"]
 if not rawget(editor, "hooked_by_FontLoennPlugin") then
   editor.hooked_by_FontLoennPlugin = true
@@ -476,6 +477,18 @@ if not rawget(editor, "hooked_by_FontLoennPlugin") then
   local orig_firstEnter = editor.firstEnter
   function editor.firstEnter(self)
     orig_firstEnter(self)
+    tryHookPlacement()
+    tryHookSelection()
+  end
+end
+
+-- ctrl + f5 会生成新的 tools 实例, 所以得重新钩一次
+if not rawget(debugUtils, "hooked_by_FontLoennPlugin") then
+  debugUtils.hooked_by_FontLoennPlugin = true
+
+  local orig_reloadEverything = debugUtils.reloadEverything
+  function debugUtils.reloadEverything(self)
+    orig_reloadEverything(self)
     tryHookPlacement()
     tryHookSelection()
   end

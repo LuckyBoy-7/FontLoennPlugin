@@ -9,9 +9,11 @@ local CONFIG = {
     PADDING = 3,
     CENTER_TOLERANCE = 7, -- 中心点误差容忍范围, 如果在范围内, 就当作是在一个中心, 以便提前以更好看的方式排列, 7 刚好小于一格
     MoveDistRatio = 1,    -- 每次慢慢移动太墨迹了, 尝试以一定倍率移动
+    NEIGHBOUR_CHECK_PADDING = 3,
+    PADDING_MAX_NEIGHBOUR = 6,    
 }
 
-local rectIsSingle = {}
+local rectCollidedNeighbourCount = {}
 local rectIsOutOfRoom = {}
 
 -- ========== 工具函数 ==========
@@ -25,16 +27,18 @@ local function getCenter(rect)
 end
 
 -- 检查矩形是否碰撞
-local function isRectOverlapping(a, b)
+local function isRectOverlapping(a, b, padding)
     if not a or not b then
         return false
     end
 
+    padding = padding or 0
+
     -- 完全在左侧、右侧、上方或下方
-    return not (a.x + a.width <= b.x or
-        a.x >= b.x + b.width or
-        a.y + a.height <= b.y or
-        a.y >= b.y + b.height)
+    return not (a.x + a.width <= b.x - 2 * padding or
+        a.x >= b.x + b.width + 2 * padding or
+        a.y + a.height <= b.y - 2 * padding or
+        a.y >= b.y + b.height + 2 * padding)
 end
 
 -- 检查矩形是否完全在房间外
@@ -200,7 +204,12 @@ local function performCollisionIteration(rects, roomRect)
                 -- 只处理房间内的矩形
                 if not rectIsOutOfRoom[j] then
                     -- 当 trigger text 不与其他 trigger text 碰撞时, padding 设为 0, 以防在 text 没有明显重叠的情况下被挤出
-                    local padding = (rectIsSingle[i] and rectIsSingle[j]) and 0 or CONFIG.PADDING
+                    local averageNeighbourDensity = (rectCollidedNeighbourCount[i] + rectCollidedNeighbourCount[j]) / 2
+                    local padding = CONFIG.PADDING * averageNeighbourDensity / CONFIG.PADDING_MAX_NEIGHBOUR
+                    if padding > CONFIG.PADDING then
+                        padding=CONFIG.PADDING
+                    end
+
                     local overlapX, overlapY = getOverlap(rectA, rectB, padding)
 
                     -- 检测是否碰撞
@@ -250,17 +259,15 @@ local function performCollisionIteration(rects, roomRect)
 end
 
 local function updateRectsState(rects, roomRect)
-    rectIsSingle = {}
+    rectCollidedNeighbourCount = {}
     rectIsOutOfRoom = {}
     for i = 1, #rects do
-        local single = true
+        rectCollidedNeighbourCount[i] = 0
         for j = 1, #rects do
-            if i ~= j and isRectOverlapping(rects[i], rects[j]) then
-                single = false
-                break
+            if i ~= j and isRectOverlapping(rects[i], rects[j], CONFIG.NEIGHBOUR_CHECK_PADDING) then
+                rectCollidedNeighbourCount[i] = rectCollidedNeighbourCount[i] + 1
             end
         end
-        rectIsSingle[i] = single
         rectIsOutOfRoom[i] = isRectOutsideRoom(rects[i], roomRect)
     end
 end

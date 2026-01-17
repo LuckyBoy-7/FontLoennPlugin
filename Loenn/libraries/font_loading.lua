@@ -37,6 +37,10 @@ local library = {}
 
 local modSettings = mods.getModSettings("FontLoennPlugin")
 
+local CONFIG = {
+    DEBUG = false,
+}
+
 
 -- default
 if modSettings.useHiresPixelFont == nil then
@@ -239,6 +243,8 @@ local function checkShouldRebuildTriggerTextOffset(room)
   return false
 end
 
+local debugOrigTextRects = {}
+
 local function tryUpdateTriggerTextOffset(room, triggersList)
   if modSettings.extrudeOverlappingTriggerText == false then
     return
@@ -261,6 +267,9 @@ local function tryUpdateTriggerTextOffset(room, triggersList)
     local triggerTextRect = getTextRect(displayName, x, y, width, height, fonts.font,
       fonts.fontScale * triggerHandler.triggerFontSize)
     table.insert(rects, triggerTextRect)
+    if CONFIG.DEBUG then
+      debugOrigTextRects[trigger] = triggerTextRect
+    end
   end
 
   local roomRect = {x = 0, y = 0, width = room.width, height = room.height}
@@ -505,6 +514,8 @@ if not triggerHandler.hooked_by_FontLoennPlugin then
     local width = (trigger.width or 16)
     local height = trigger.height or 16
 
+    
+
     local fillColor, borderColor, textColor = triggerHandler.triggerColor(room, trigger)
 
     -- highlight
@@ -512,6 +523,8 @@ if not triggerHandler.hooked_by_FontLoennPlugin then
       textColor = {1, 1, 0, 1}      
     end
     local borderedRectangle = drawableRectangle.fromRectangle("bordered", x, y, width, height, fillColor, borderColor)
+    local drawables = borderedRectangle:getDrawableSprite()
+
 
     -- extrude
     if (extrudeTriggerText and triggerToTextOffsetRect[trigger] ~= nil) then
@@ -520,13 +533,28 @@ if not triggerHandler.hooked_by_FontLoennPlugin then
       y = y + dy
     end
 
+    -- 查看 textRect 范围
+    if CONFIG.DEBUG then
+      if debugOrigTextRects[trigger] then
+          -- local textRect = getTextRect(displayName, x, y, width, height)
+          local origTextRectWithPadding = debugOrigTextRects[trigger]
+          local debugPadding = 3
+          local borderedRectangle = drawableRectangle.fromRectangle("bordered", origTextRectWithPadding.x - debugPadding, origTextRectWithPadding.y - debugPadding, origTextRectWithPadding.width + debugPadding * 2, origTextRectWithPadding.height + debugPadding * 2, {0, 0, 1, 1}, {0, 0, 1, 1})
+          table.insert(drawables, borderedRectangle)
+
+
+          local origTextRect = debugOrigTextRects[trigger]
+          local borderedRectangle = drawableRectangle.fromRectangle("bordered", origTextRect.x, origTextRect.y, origTextRect.width, origTextRect.height, {1, 0, 0, 1}, {1, 0, 0, 1})
+          table.insert(drawables, borderedRectangle)
+      end
+    end
+
     x, y, width, height = tryStretchTriggerText(x, y, width, height)
     
     local textDrawable = drawableText.fromText(displayName, x, y, width, height, nil, triggerHandler.triggerFontSize,
       textColor)
     textDrawable.depth = depths.triggers - 1
    
-    local drawables = borderedRectangle:getDrawableSprite()
     table.insert(drawables, textDrawable)
     if addShadow then
        -- shadow
@@ -536,6 +564,7 @@ if not triggerHandler.hooked_by_FontLoennPlugin then
       shadowTextDrawable.depth = depths.triggers - 0.9
       table.insert(drawables, shadowTextDrawable)
     end
+
 
 
     return drawables, depths.triggers

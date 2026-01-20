@@ -3,5 +3,6 @@ ui.menubar.FontLoennPlugin_extrudeOverlappingTriggerText=Extrude Trigger Text Wh
 ui.menubar.FontLoennPlugin_highlightTriggerTextOnSelected=Highlight Trigger Text On Selected
 ui.menubar.FontLoennPlugin_addShadowToFont=Add Shadow To Font
 ui.menubar.FontLoennPlugin_stretchTextOnSmallTrigger=Stretch Text On Small Trigger
+ui.menubar.FontLoennPlugin_selectTriggerByClickText=Select Trigger By Click Text
 
 ui.menubar.FontLoennPlugin=Font Loenn Plugin

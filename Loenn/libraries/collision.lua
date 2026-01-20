@@ -319,4 +319,10 @@ function collision.getConfig()
     }
 end
 
+function collision.rectContainsPoint(rect, x, y, padding)
+    padding = padding or 0
+    return x >= rect.x - padding and x < rect.x + rect.width + padding and y >= rect.y - padding and y < rect.y + rect.height + padding
+end
+
+
 return collision

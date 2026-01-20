@@ -26,6 +26,7 @@ local state = require("loaded_state")
 local selectionUtils = require("selections")
 local toolUtils = require("tool_utils")
 local debugUtils = require("debug_utils")
+local menubar = require("ui.menubar")
 
 local event = mods.requireFromPlugin("libraries.event")
 local hook = mods.requireFromPlugin("libraries.LuaModHook")
@@ -39,21 +40,23 @@ local library = {}
 local modSettings = mods.getModSettings("FontLoennPlugin")
 
 local CONFIG = {
-    DEBUG = false,
+  DEBUG = false,
 }
 
 
 -- default
 if modSettings.useHiresPixelFont == nil then
-    modSettings.useHiresPixelFont = false
+  modSettings.useHiresPixelFont = false
 elseif modSettings.extrudeOverlappingTriggerText == nil then
-    modSettings.extrudeOverlappingTriggerText = false
+  modSettings.extrudeOverlappingTriggerText = false
 elseif modSettings.highlightTriggerTextOnSelected == nil then
-    modSettings.highlightTriggerTextOnSelected = false
+  modSettings.highlightTriggerTextOnSelected = false
 elseif modSettings.addShadowToFont == nil then
-    modSettings.addShadowToFont = false
+  modSettings.addShadowToFont = false
 elseif modSettings.stretchTextOnSmallTrigger == nil then
-    modSettings.stretchTextOnSmallTrigger = false
+  modSettings.stretchTextOnSmallTrigger = false
+elseif modSettings.selectTriggerByClickText == nil then
+  modSettings.selectTriggerByClickText = false
 end
 
 -- copied from AurorasLoennPlugin's "copied from AnotherLoenTool lol thanks!!!" lol thanks!!!
@@ -72,8 +75,7 @@ end
 
 local MoveDevice = {}
 local function injectCheckboxes()
-    local menubar = require("ui.menubar").menubar
-    local viewMenu = $(menubar):find(menu -> menu[1] == "view")[2]
+    local viewMenu = $(menubar.menubar):find(menu -> menu[1] == "view")[2]
     local fontLoennPluginDropdown = {}
     local fontLoennPluginGroup = {"FontLoennPlugin", fontLoennPluginDropdown}
 
@@ -108,6 +110,12 @@ local function injectCheckboxes()
                     clearAllCaches()
                 end,
                 function() return modSettings.stretchTextOnSmallTrigger end)
+      checkbox(fontLoennPluginDropdown, "FontLoennPlugin_selectTriggerByClickText",
+                function()
+                    modSettings.selectTriggerByClickText = not modSettings.selectTriggerByClickText
+                    clearAllCaches()
+                end,
+                function() return modSettings.selectTriggerByClickText end)
 end
 
 injectCheckboxes()
@@ -166,7 +174,7 @@ local function tryStretchTriggerText(x, y, width, height)
     end
 
     if height < StretchTextSizeThreshold4 then
-       y = y - height * 1.5
+      y = y - height * 1.5
       height = height * 4
     elseif height < StretchTextSizeThreshold2 then
       y = y - height / 2
@@ -179,7 +187,7 @@ end
 
 local function getTextRect(text, x, y, width, height, font, fontSize, trim)
   x, y, width, height = tryStretchTriggerText(x, y, width, height)
-  
+
   font = font or love.graphics.getFont()
   fontSize = fontSize or 1
 
@@ -211,7 +219,7 @@ local function getTextRect(text, x, y, width, height, font, fontSize, trim)
   -- 实际矩形
   local rectX = x + offsetX
   local rectY = y + offsetY
-  local rectWidth = actualWidth  -- 使用实际宽度
+  local rectWidth = actualWidth -- 使用实际宽度
   local rectHeight = textHeight * fontSize
 
   return {
@@ -223,6 +231,7 @@ local function getTextRect(text, x, y, width, height, font, fontSize, trim)
 end
 
 local triggerToTextOffsetRect = {}
+local roomToTriggerToTextRects = {}
 local roomNameToHaveInitialized = {}
 local shouldRedrawRoom = nil
 
@@ -273,10 +282,24 @@ local function tryUpdateTriggerTextOffset(room, triggersList)
     end
   end
 
-  local roomRect = {x = 0, y = 0, width = room.width, height = room.height}
+  local roomRect = { x = 0, y = 0, width = room.width, height = room.height }
   local extrudedRects = collision.getExtrudedRects(rects, roomRect)
+  roomToTriggerToTextRects[room] = {}
   for i, trigger in ipairs(triggersList) do
     triggerToTextOffsetRect[trigger] = extrudedRects[i]
+    roomToTriggerToTextRects[room][trigger] = extrudedRects[i]
+  end
+end
+
+
+-- 在 load recent map 或者 open new map 的时候清空缓存, 防止 extrude 之类的效果失效
+if not rawget(state, "loadFile_hooked_by_FontLoennPlugin") then
+  rawset(state, "loadFile_hooked_by_FontLoennPlugin", true)
+
+  local orig_loadFile = state.loadFile
+  function state.loadFile(filename, roomName)
+    orig_loadFile(filename, roomName)
+    clearAllCaches()
   end
 end
 
@@ -433,42 +456,61 @@ local function tryHookSelection()
     return
   end
   hook.hook_local_func(selection.mousereleased, "selectionFinished", function(orig, x, y, fromClick)
-      local room = state.getSelectedRoom()
-      orig(x, y, fromClick)
-      -- rebuild batch
-      -- 如果什么都不选 selection.getSelectionTargets() 为空拿不到要重绘的 layer 反而导致没有重绘, 所以我们手动使用另一个函数
-      -- selectionUtils.redrawTargetLayers(room, selection.getSelectionTargets())
-      toolUtils.redrawTargetLayer(room, {"triggers"})
+    local room = state.getSelectedRoom()
+    orig(x, y, fromClick)
+    -- rebuild batch
+    -- 如果什么都不选 selection.getSelectionTargets() 为空拿不到要重绘的 layer 反而导致没有重绘, 所以我们手动使用另一个函数
+    -- selectionUtils.redrawTargetLayers(room, selection.getSelectionTargets())
+    toolUtils.redrawTargetLayer(room, { "triggers" })
   end)
 
 
   local layerSortingPriority = hook.get_local(selectionUtils.orderSelectionsByScore, "layerSortingPriority")
   function selectionUtils.orderSelectionsByScore(selections)
-      table.sort(selections, function(lhs, rhs)
-        local lhsPriority = layerSortingPriority[lhs.layer] or 1
-        local rhsPriority = layerSortingPriority[rhs.layer] or 1
+    table.sort(selections, function(lhs, rhs)
+      local lhsPriority = layerSortingPriority[lhs.layer] or 1
+      local rhsPriority = layerSortingPriority[rhs.layer] or 1
 
-        if lhsPriority ~= rhsPriority then
-            return lhsPriority > rhsPriority
-        end
+      if lhsPriority ~= rhsPriority then
+        return lhsPriority > rhsPriority
+      end
 
-        local lhsArea = lhs.width * lhs.height
-        local rhsArea = rhs.width * rhs.height
+      local lhsArea = lhs.width * lhs.height
+      local rhsArea = rhs.width * rhs.height
 
-        if lhsArea ~= rhsArea then
-            return lhsArea < rhsArea
-        end
+      if lhsArea ~= rhsArea then
+        return lhsArea < rhsArea
+      end
 
-        -- 如果层级和面积都一样，强制按 ID 排序，保证稳定性(使得 trigger 叠一起的时候能以更舒服的顺序选择)
-        -- 注意：这里假设 lhs.item 存在且有 _id 属性
-        local lhsId = (lhs.item and lhs.item._id) or 0
-        local rhsId = (rhs.item and rhs.item._id) or 0
-        return lhsId < rhsId
+      -- 如果层级和面积都一样，强制按 ID 排序，保证稳定性(使得 trigger 叠一起的时候能以更舒服的顺序选择)
+      -- 注意：这里假设 lhs.item 存在且有 _id 属性
+      local lhsId = (lhs.item and lhs.item._id) or 0
+      local rhsId = (rhs.item and rhs.item._id) or 0
+      return lhsId < rhsId
     end)
 
     return selections
   end
+
+  -- 选中 trigger 字体的时候可以选中 trigger
+  hook.hook_local_func(selection.mouseclicked, "selectionChanged", function(orig, x, y, width, height, fromClick)
+    if (fromClick and modSettings.selectTriggerByClickText and (selection.layer == "triggers" or type(selection.layer) == "table" and selection.layer._persistenceName == "AllLayers")) then
+      local room = state.getSelectedRoom()
+      if roomToTriggerToTextRects[room] ~= nil then
+        for trigger, triggerTextRect in pairs(roomToTriggerToTextRects[room]) do
+          if collision.rectContainsPoint(triggerTextRect, x, y) then
+            local rects = {}
+            selectionUtils.getSelectionsForItem(room, "triggers", trigger, rects)
+            selection.setSelectionPreviews(rects)
+            return
+          end
+        end
+      end
+    end
+    orig(x, y, width, height, fromClick)
+  end)
 end
+
 
 local editor = sceneHandler.scenes["Editor"]
 if not rawget(editor, "hooked_by_FontLoennPlugin") then
@@ -495,17 +537,17 @@ if not rawget(debugUtils, "hooked_by_FontLoennPlugin") then
 end
 
 local function isItemSelected(item, selections)
-    if not selections then
-        return false
-    end
-    
-    for _, target in ipairs(selections.getSelectionTargets()) do
-        if target.item == item then
-            return true
-        end
-    end
-    
+  if not selections then
     return false
+  end
+
+  for _, target in ipairs(selections.getSelectionTargets()) do
+    if target.item == item then
+      return true
+    end
+  end
+
+  return false
 end
 -- 为高清像素字体添加阴影
 -- 在 task 创建完 batch 后, 尝试调整 trigger 字体的位置(不知道 lua 有没有类似 il 一样的插入方式, 感觉还是直接整体替换方便点, 反正我一个版本更一版应该问题不大())
@@ -527,13 +569,13 @@ if not triggerHandler.hooked_by_FontLoennPlugin then
     local width = (trigger.width or 16)
     local height = trigger.height or 16
 
-    
+
 
     local fillColor, borderColor, textColor = triggerHandler.triggerColor(room, trigger)
 
     -- highlight
     if modSettings.highlightTriggerTextOnSelected and isItemSelected(trigger, tools.tools["selection"]) then
-      textColor = {1, 1, 0, 1}      
+      textColor = { 1, 1, 0, 1 }
     end
     local borderedRectangle = drawableRectangle.fromRectangle("bordered", x, y, width, height, fillColor, borderColor)
     local drawables = borderedRectangle:getDrawableSprite()
@@ -549,31 +591,34 @@ if not triggerHandler.hooked_by_FontLoennPlugin then
     -- 查看 textRect 范围
     if CONFIG.DEBUG then
       if debugOrigTextRects[trigger] then
-          -- local textRect = getTextRect(displayName, x, y, width, height)
-          local origTextRectWithPadding = debugOrigTextRects[trigger]
-          local debugPadding = 3
-          local borderedRectangle = drawableRectangle.fromRectangle("bordered", origTextRectWithPadding.x - debugPadding, origTextRectWithPadding.y - debugPadding, origTextRectWithPadding.width + debugPadding * 2, origTextRectWithPadding.height + debugPadding * 2, {0, 0, 1, 1}, {0, 0, 1, 1})
-          table.insert(drawables, borderedRectangle)
+        -- local textRect = getTextRect(displayName, x, y, width, height)
+        local origTextRectWithPadding = debugOrigTextRects[trigger]
+        local debugPadding = 3
+        local borderedRectangle = drawableRectangle.fromRectangle("bordered", origTextRectWithPadding.x - debugPadding,
+          origTextRectWithPadding.y - debugPadding, origTextRectWithPadding.width + debugPadding * 2,
+          origTextRectWithPadding.height + debugPadding * 2, { 0, 0, 1, 1 }, { 0, 0, 1, 1 })
+        table.insert(drawables, borderedRectangle)
 
 
-          local origTextRect = debugOrigTextRects[trigger]
-          local borderedRectangle = drawableRectangle.fromRectangle("bordered", origTextRect.x, origTextRect.y, origTextRect.width, origTextRect.height, {1, 0, 0, 1}, {1, 0, 0, 1})
-          table.insert(drawables, borderedRectangle)
+        local origTextRect = debugOrigTextRects[trigger]
+        local borderedRectangle = drawableRectangle.fromRectangle("bordered", origTextRect.x, origTextRect.y,
+          origTextRect.width, origTextRect.height, { 1, 0, 0, 1 }, { 1, 0, 0, 1 })
+        table.insert(drawables, borderedRectangle)
       end
     end
 
     x, y, width, height = tryStretchTriggerText(x, y, width, height)
-    
+
     local textDrawable = drawableText.fromText(displayName, x, y, width, height, nil, triggerHandler.triggerFontSize,
       textColor)
     textDrawable.depth = depths.triggers - 1
-   
+
     table.insert(drawables, textDrawable)
     if addShadow then
-       -- shadow
+      -- shadow
       local offset = fonts.fontScale
       local shadowTextDrawable = drawableText.fromText(displayName, x + offset, y + offset, width, height, nil,
-      triggerHandler.triggerFontSize, { 0, 0, 0, 1 })
+        triggerHandler.triggerFontSize, { 0, 0, 0, 1 })
       shadowTextDrawable.depth = depths.triggers - 0.9
       table.insert(drawables, shadowTextDrawable)
     end
@@ -608,6 +653,7 @@ end
 
 function clearExtrudedTriggerTextCache()
   triggerToTextOffsetRect = {}
+  roomToTriggerToTextRects = {}
   roomNameToHaveInitialized = {}
   shouldRedrawRoom = nil
 end

@@ -9,6 +9,7 @@
 * **Highlight Trigger Text On Selected**: 当你选中 Trigger 的时候是否高亮(标黄)其文本
 * **Add Shadow To Font**: 是否为 Trigger 文本添加阴影
 * **Stretch Text On Small Trigger**: 当 Trigger 特别小的时候是否拉伸其文本使其更易阅读
+* **Select Trigger By Click Text**: 你可以通过点击 Trigger 文本选中 Trigger, 方便你在一堆重叠 Trigger 一下选中自己想要的
 
 ### 注意
 
@@ -25,6 +26,7 @@ You can selectively enable features via the menu: **View → Font Loenn Plugin**
 * **Highlight Trigger Text On Selected**: Highlights (in yellow) trigger text when it is selected
 * **Add Shadow To Font**: Adds a shadow to trigger text
 * **Stretch Text On Small Trigger**: Whether to stretch trigger text to make it readable when the trigger is really tiny!
+* **Select Trigger By Click Text**: You can select a trigger by clicking it's text when there are so many overlapped triggers!
 
 ### Notes
 

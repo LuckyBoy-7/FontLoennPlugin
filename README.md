@@ -1,4 +1,4 @@
-本来是要给 Loenn 写一个高清字体的, 但是被拒了只能转战 mod, 没想到生产力意外的高反而写了更多更好玩的东西, 因祸得福了属于是, 同时非常感谢 sap, weg, 底龙, OldmanG 提供的建议和帮助 mmc heart
+本来是要给 Loenn 写一个高清字体的, 但是被拒了只能转战 mod, 没想到生产力意外的高反而写了更多更好玩的东西, 因祸得福了属于是, 同时非常感谢 sap, weg, 底龙, OldmanG, Nataly171 提供的建议和帮助 mmc heart
 
 ## 使用
 
@@ -10,6 +10,7 @@
 * **Add Shadow To Font**: 是否为 Trigger 文本添加阴影
 * **Stretch Text On Small Trigger**: 当 Trigger 特别小的时候是否拉伸其文本使其更易阅读
 * **Select Trigger By Click Text**: 你可以通过点击 Trigger 文本选中 Trigger, 方便你在一堆重叠 Trigger 一下选中自己想要的
+* **Auto Switch Font**: 该插件会自动根据界面滚动缩放调整字体
 
 ### 注意
 
@@ -27,6 +28,7 @@ You can selectively enable features via the menu: **View → Font Loenn Plugin**
 * **Add Shadow To Font**: Adds a shadow to trigger text
 * **Stretch Text On Small Trigger**: Whether to stretch trigger text to make it readable when the trigger is really tiny!
 * **Select Trigger By Click Text**: You can select a trigger by clicking it's text when there are so many overlapped triggers!
+* **Auto Switch Font**: This plugin will adjust font automatically by scrolling scale
 
 ### Notes
 

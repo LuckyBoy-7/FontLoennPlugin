@@ -4,5 +4,6 @@ ui.menubar.FontLoennPlugin_highlightTriggerTextOnSelected=Highlight Trigger Text
 ui.menubar.FontLoennPlugin_addShadowToFont=Add Shadow To Font
 ui.menubar.FontLoennPlugin_stretchTextOnSmallTrigger=Stretch Text On Small Trigger
 ui.menubar.FontLoennPlugin_selectTriggerByClickText=Select Trigger By Click Text
+ui.menubar.FontLoennPlugin_autoSwitchFont=AutoSwitchFont
 
 ui.menubar.FontLoennPlugin=Font Loenn Plugin

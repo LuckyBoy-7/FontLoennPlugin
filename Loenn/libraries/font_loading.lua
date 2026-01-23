@@ -27,6 +27,7 @@ local selectionUtils = require("selections")
 local toolUtils = require("tool_utils")
 local debugUtils = require("debug_utils")
 local menubar = require("ui.menubar")
+local viewport_handler = require("viewport_handler")
 
 local event = mods.requireFromPlugin("libraries.event")
 local hook = mods.requireFromPlugin("libraries.LuaModHook")
@@ -57,6 +58,8 @@ elseif modSettings.stretchTextOnSmallTrigger == nil then
   modSettings.stretchTextOnSmallTrigger = false
 elseif modSettings.selectTriggerByClickText == nil then
   modSettings.selectTriggerByClickText = false
+elseif modSettings.autoSwitchFont == nil then
+  modSettings.autoSwitchFont = false
 end
 
 -- copied from AurorasLoennPlugin's "copied from AnotherLoenTool lol thanks!!!" lol thanks!!!
@@ -83,7 +86,9 @@ local function injectCheckboxes()
     checkbox(fontLoennPluginDropdown, "FontLoennPlugin_useHiresPixelFont",
                 function()
                     modSettings.useHiresPixelFont = not modSettings.useHiresPixelFont
-                    fonts:useFont(modSettings.useHiresPixelFont)
+                    if not modSettings.autoSwitchFont then
+                      fonts:useFont(modSettings.useHiresPixelFont)
+                    end
                 end,
                 function() return modSettings.useHiresPixelFont end)
     checkbox(fontLoennPluginDropdown, "FontLoennPlugin_extrudeOverlappingTriggerText",
@@ -116,6 +121,16 @@ local function injectCheckboxes()
                     clearAllCaches()
                 end,
                 function() return modSettings.selectTriggerByClickText end)
+      checkbox(fontLoennPluginDropdown, "FontLoennPlugin_autoSwitchFont",
+                function()
+                    modSettings.autoSwitchFont = not modSettings.autoSwitchFont
+                    if modSettings.autoSwitchFont then
+                      setFontByCurrentScroll()
+                    else
+                      fonts:useFont(modSettings.useHiresPixelFont)
+                    end
+                end,
+                function() return modSettings.autoSwitchFont end)
 end
 
 injectCheckboxes()
@@ -536,6 +551,49 @@ if not rawget(debugUtils, "hooked_by_FontLoennPlugin") then
   end
 end
 
+local function setFontScrollWrapper(scrollFunc, force)
+  if not modSettings.autoSwitchFont then
+    scrollFunc()
+    return
+  end
+
+  local preScale = viewport_handler.viewport.scale
+  scrollFunc()
+  local afterScale = viewport_handler.viewport.scale
+
+  if preScale == 1 and afterScale == 2 then
+     fonts:useFont(true)
+  elseif preScale == 2 and afterScale == 1 then
+     fonts:useFont(false)
+  end
+end
+
+function setFontByCurrentScroll()
+  local scale = viewport_handler.viewport.scale
+  if scale <= 1 then
+    fonts:useFont(false)
+    return
+  end
+  fonts:useFont(true)
+end
+
+-- 监听 scroll 尝试自动切换字体
+if not rawget(viewport_handler, "hooked_by_FontLoennPlugin") then
+  viewport_handler.hooked_by_FontLoennPlugin = true
+
+  local orig_zoomIn = viewport_handler.zoomIn
+  function viewport_handler.zoomIn()
+    setFontScrollWrapper(orig_zoomIn)
+  end
+
+  local orig_zoomOut = viewport_handler.zoomOut
+  function viewport_handler.zoomOut()
+    setFontScrollWrapper(orig_zoomOut)
+  end
+end
+
+
+
 local function isItemSelected(item, selections)
   if not selections then
     return false
@@ -549,6 +607,7 @@ local function isItemSelected(item, selections)
 
   return false
 end
+
 -- 为高清像素字体添加阴影
 -- 在 task 创建完 batch 后, 尝试调整 trigger 字体的位置(不知道 lua 有没有类似 il 一样的插入方式, 感觉还是直接整体替换方便点, 反正我一个版本更一版应该问题不大())
 if not triggerHandler.hooked_by_FontLoennPlugin then
@@ -679,7 +738,12 @@ fonts.onChanged:add(function()
 end
 )
 
-
-fonts:useFont(modSettings.useHiresPixelFont)
+if modSettings.autoSwitchFont then
+  setFontByCurrentScroll()
+elseif modSettings.useHiresPixelFont then
+  fonts:useFont(true)
+else
+  fonts:useFont(false)
+end
 
 return library

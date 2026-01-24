@@ -27,7 +27,7 @@ You can selectively enable features via the menu: **View → Font Loenn Plugin**
 * **Highlight Trigger Text On Selected**: Highlights (in yellow) trigger text when it is selected
 * **Add Shadow To Font**: Adds a shadow to trigger text
 * **Stretch Text On Small Trigger**: Whether to stretch trigger text to make it readable when the trigger is really tiny!
-* **Select Trigger By Click Text**: You can select a trigger by clicking it's text when there are so many overlapped triggers!
+* **Select Trigger By Click Text**: You can select a trigger by clicking its text when there are so many overlapped triggers!
 * **Auto Switch Font**: This plugin will adjust font automatically by scrolling scale
 
 ### Notes

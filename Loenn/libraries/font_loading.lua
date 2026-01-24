@@ -516,6 +516,13 @@ local function tryHookSelection()
           if collision.rectContainsPoint(triggerTextRect, x, y) then
             local rects = {}
             selectionUtils.getSelectionsForItem(room, "triggers", trigger, rects)
+            -- 只取 main node, 以防同时选中 main node 和 sub node, 导致无法在 panel 里更改宽高
+            for _, node in pairs(rects) do
+              if node.node == 0 then
+                rects = {node}
+                break
+              end
+            end
             selection.setSelectionPreviews(rects)
             return
           end

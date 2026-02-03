@@ -622,6 +622,9 @@ if not triggerHandler.hooked_by_FontLoennPlugin then
 
   local orig_trigger_getDrawable = triggerHandler.getDrawable
   function triggerHandler.getDrawable(name, handler, room, trigger, viewport)
+    local drawables, _ = orig_trigger_getDrawable(name, handler, room, trigger, viewport)
+
+
     local addShadow = modSettings.addShadowToFont and not duringPlacement
     local extrudeTriggerText = modSettings.extrudeOverlappingTriggerText
 
@@ -643,8 +646,8 @@ if not triggerHandler.hooked_by_FontLoennPlugin then
     if modSettings.highlightTriggerTextOnSelected and isItemSelected(trigger, tools.tools["selection"]) then
       textColor = { 1, 1, 0, 1 }
     end
-    local borderedRectangle = drawableRectangle.fromRectangle("bordered", x, y, width, height, fillColor, borderColor)
-    local drawables = borderedRectangle:getDrawableSprite()
+    -- local borderedRectangle = drawableRectangle.fromRectangle("bordered", x, y, width, height, fillColor, borderColor)
+    -- local drawables = borderedRectangle:getDrawableSprite()
 
 
     -- extrude
@@ -679,7 +682,19 @@ if not triggerHandler.hooked_by_FontLoennPlugin then
       textColor)
     textDrawable.depth = depths.triggers - 1
 
-    table.insert(drawables, textDrawable)
+      -- try remove text part
+    local replaceTextSuccess = false
+    for i, drawable in ipairs(drawables) do
+      if drawable ~= nil and drawable._type == "drawableText" then
+        drawables[i] = textDrawable
+        replaceTextSuccess = true
+        break
+      end
+    end
+    if not replaceTextSuccess then
+      table.insert(drawables, textDrawable)
+    end
+
     if addShadow then
       -- shadow
       local offset = fonts.fontScale

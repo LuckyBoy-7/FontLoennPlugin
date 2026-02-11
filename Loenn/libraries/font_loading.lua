@@ -54,8 +54,8 @@ elseif modSettings.highlightTriggerTextOnSelected == nil then
   modSettings.highlightTriggerTextOnSelected = false
 elseif modSettings.addShadowToFont == nil then
   modSettings.addShadowToFont = false
-elseif modSettings.stretchTextOnSmallTrigger == nil then
-  modSettings.stretchTextOnSmallTrigger = false
+elseif modSettings.showCompleteWord == nil then
+  modSettings.showCompleteWord = false
 elseif modSettings.selectTriggerByClickText == nil then
   modSettings.selectTriggerByClickText = false
 elseif modSettings.autoSwitchFont == nil then
@@ -109,12 +109,12 @@ local function injectCheckboxes()
                     clearAllCaches()
                 end,
                 function() return modSettings.addShadowToFont end)
-      checkbox(fontLoennPluginDropdown, "FontLoennPlugin_stretchTextOnSmallTrigger",
+      checkbox(fontLoennPluginDropdown, "FontLoennPlugin_showCompleteWord",
                 function()
-                    modSettings.stretchTextOnSmallTrigger = not modSettings.stretchTextOnSmallTrigger
+                    modSettings.showCompleteWord = not modSettings.showCompleteWord
                     clearAllCaches()
                 end,
-                function() return modSettings.stretchTextOnSmallTrigger end)
+                function() return modSettings.showCompleteWord end)
       checkbox(fontLoennPluginDropdown, "FontLoennPlugin_selectTriggerByClickText",
                 function()
                     modSettings.selectTriggerByClickText = not modSettings.selectTriggerByClickText
@@ -175,41 +175,56 @@ if not fonts.hooked_by_FontLoennPlugin then
   fonts.onChanged = event.new()
 end
 
-local StretchTextSizeThreshold2 = 32
-local StretchTextSizeThreshold4 = 16
-
-local function tryStretchTriggerText(x, y, width, height)
-  if modSettings.stretchTextOnSmallTrigger then
-    if width < StretchTextSizeThreshold4 then
-      x = x - width * 1.5
-      width = width * 4
-    elseif width < StretchTextSizeThreshold2 then
-      x = x - width / 2
-      width = width * 2
+local function tryStretchTriggerText(x, y, width, height, text)
+  if modSettings.showCompleteWord then
+     -- 解析文本，找到最长单词的宽度
+    -- 按空格和换行符切分
+    local font = love.graphics.getFont()
+    local maxWordWith = width
+    -- 先按换行符切分
+    for line in string.gmatch(text .. "\n", "(.-)\n") do
+      line = utils.trim(line) -- 去除首尾空白
+      
+      -- 检查是否首尾是括号
+      local isWrappedInParens = (string.sub(line, 1, 1) == "(" and string.sub(line, -1) == ")")
+      
+      if isWrappedInParens then
+        -- 整行作为一个单词
+        local wordWidth = font:getWidth(line) * fonts.fontScale
+        if wordWidth > maxWordWith then
+          maxWordWith = wordWidth + 10
+        end
+      else
+        -- 按空格切分
+        for word in string.gmatch(line, "[^%s]+") do
+          local wordWidth = font:getWidth(word) * fonts.fontScale
+          if wordWidth > maxWordWith then
+            maxWordWith = wordWidth + 10
+          end
+        end
+      end
     end
 
-    if height < StretchTextSizeThreshold4 then
-      y = y - height * 1.5
-      height = height * 4
-    elseif height < StretchTextSizeThreshold2 then
-      y = y - height / 2
-      height = height * 2
+    if maxWordWith > width then
+      x = x - (maxWordWith - width) / 2
+      width = maxWordWith
     end
   end
+
+
   return x, y, width, height
 end
 
 
 local function getTextRect(text, x, y, width, height, font, fontSize, trim)
-  x, y, width, height = tryStretchTriggerText(x, y, width, height)
-
+  x, y, width, height = tryStretchTriggerText(x, y, width, height, text)
+  
   font = font or love.graphics.getFont()
   fontSize = fontSize or 1
 
   if trim ~= false then
     text = utils.trim(text)
   end
-
 
   -- 文字尺寸
   local fontHeight = font:getHeight()
@@ -220,7 +235,7 @@ local function getTextRect(text, x, y, width, height, font, fontSize, trim)
   -- 计算实际文本宽度（取所有行中最宽的）
   local maxWidth = 0
   for i = 1, #lines do
-    local lineWidth = font:getWidth(lines[i])
+    local lineWidth = font:getWidth(lines[i])  -- 这里有算上字号的
     if lineWidth > maxWidth then
       maxWidth = lineWidth
     end
@@ -676,7 +691,7 @@ if not triggerHandler.hooked_by_FontLoennPlugin then
       end
     end
 
-    x, y, width, height = tryStretchTriggerText(x, y, width, height)
+    x, y, width, height = tryStretchTriggerText(x, y, width, height, displayName)
 
     local textDrawable = drawableText.fromText(displayName, x, y, width, height, nil, triggerHandler.triggerFontSize,
       textColor)

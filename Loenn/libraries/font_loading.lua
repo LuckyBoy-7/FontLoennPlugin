@@ -32,7 +32,9 @@ local viewport_handler = require("viewport_handler")
 local event = mods.requireFromPlugin("libraries.event")
 local hook = mods.requireFromPlugin("libraries.LuaModHook")
 local collision = mods.requireFromPlugin("libraries.collision")
+local triggerTextStretcherLib = mods.requireFromPlugin("libraries.trigger_text_stretcher")
 
+local triggerTextStretcher = triggerTextStretcherLib.new()
 
 local library = {}
 
@@ -46,21 +48,25 @@ local CONFIG = {
 
 
 -- default
-if modSettings.useHiresPixelFont == nil then
-  modSettings.useHiresPixelFont = false
-elseif modSettings.extrudeOverlappingTriggerText == nil then
-  modSettings.extrudeOverlappingTriggerText = false
-elseif modSettings.highlightTriggerTextOnSelected == nil then
-  modSettings.highlightTriggerTextOnSelected = false
-elseif modSettings.addShadowToFont == nil then
-  modSettings.addShadowToFont = false
-elseif modSettings.showCompleteWord == nil then
-  modSettings.showCompleteWord = false
-elseif modSettings.selectTriggerByClickText == nil then
-  modSettings.selectTriggerByClickText = false
-elseif modSettings.autoSwitchFont == nil then
-  modSettings.autoSwitchFont = false
+local function initializeModSettings()
+  local defaults = {
+    useHiresPixelFont = false,
+    extrudeOverlappingTriggerText = false,
+    highlightTriggerTextOnSelected = false,
+    addShadowToFont = false,
+    showCompleteWord = false,
+    selectTriggerByClickText = false,
+    autoSwitchFont = false,
+  }
+  
+  for key, defaultValue in pairs(defaults) do
+    if modSettings[key] == nil then
+      modSettings[key] = defaultValue
+    end
+  end
 end
+
+initializeModSettings()
 
 -- copied from AurorasLoennPlugin's "copied from AnotherLoenTool lol thanks!!!" lol thanks!!!
 local function checkbox(menu, lang, toggle, active)
@@ -76,7 +82,6 @@ local function checkbox(menu, lang, toggle, active)
 end
 
 
-local MoveDevice = {}
 local function injectCheckboxes()
     local viewMenu = $(menubar.menubar):find(menu -> menu[1] == "view")[2]
     local fontLoennPluginDropdown = {}
@@ -177,40 +182,8 @@ end
 
 local function tryStretchTriggerText(x, y, width, height, text)
   if modSettings.showCompleteWord then
-     -- 解析文本，找到最长单词的宽度
-    -- 按空格和换行符切分
-    local font = love.graphics.getFont()
-    local maxWordWith = width
-    -- 先按换行符切分
-    for line in string.gmatch(text .. "\n", "(.-)\n") do
-      line = utils.trim(line) -- 去除首尾空白
-      
-      -- 检查是否首尾是括号
-      local isWrappedInParens = (string.sub(line, 1, 1) == "(" and string.sub(line, -1) == ")")
-      
-      if isWrappedInParens then
-        -- 整行作为一个单词
-        local wordWidth = font:getWidth(line) * fonts.fontScale
-        if wordWidth > maxWordWith then
-          maxWordWith = wordWidth + 10
-        end
-      else
-        -- 按空格切分
-        for word in string.gmatch(line, "[^%s]+") do
-          local wordWidth = font:getWidth(word) * fonts.fontScale
-          if wordWidth > maxWordWith then
-            maxWordWith = wordWidth + 10
-          end
-        end
-      end
-    end
-
-    if maxWordWith > width then
-      x = x - (maxWordWith - width) / 2
-      width = maxWordWith
-    end
+    return triggerTextStretcher:stretch(x, y, width, height, text)
   end
-
 
   return x, y, width, height
 end
@@ -323,54 +296,37 @@ end
 
 
 -- 在 load recent map 或者 open new map 的时候清空缓存, 防止 extrude 之类的效果失效
-if not rawget(state, "loadFile_hooked_by_FontLoennPlugin") then
-  rawset(state, "loadFile_hooked_by_FontLoennPlugin", true)
-
-  local orig_loadFile = state.loadFile
-  function state.loadFile(filename, roomName)
-    orig_loadFile(filename, roomName)
+hook.hookOnce(state, "loadFile", state.loadFile, function (orig, filename, roomName)
+    orig(filename, roomName)
     clearAllCaches()
-  end
-end
+end)
 
-
-if not rawget(triggerHandler, "drawSelected_hooked_by_FontLoennPlugin") then
-  rawset(triggerHandler, "drawSelected_hooked_by_FontLoennPlugin", true)
-
-  local orig_drawSelected = triggerHandler.drawSelected
-  function triggerHandler.drawSelected(room, layer, trigger, color)
+-- 管 extrude 那些功能的(得及时刷新)
+hook.hookOnce(triggerHandler, "drawSelected", triggerHandler.drawSelected, function (orig, room, layer, trigger, color)
     shouldRedrawRoom = room
-    orig_drawSelected(room, layer, trigger, color)
-  end
-end
-
+    orig(room, layer, trigger, color)
+end)
 
 
 -- 在 task 创建完 batch 后, 尝试调整 trigger 字体的位置
-if not rawget(celesteRender, "getTriggerBatch_hooked_by_FontLoennPlugin") then
-  rawset(celesteRender, "getTriggerBatch_hooked_by_FontLoennPlugin", true)
-
-  local orig_getTriggerBatch = celesteRender.getTriggerBatch
-  function celesteRender.getTriggerBatch(room, triggersList, viewport, registeredTriggers, forceRedraw)
+hook.hookOnce(celesteRender, "getTriggerBatch", celesteRender.getTriggerBatch, function (orig, room, triggersList, viewport, registeredTriggers, forceRedraw)
     tryUpdateTriggerTextOffset(room, triggersList)
-    local orderedBatches = orig_getTriggerBatch(room, triggersList, viewport, registeredTriggers, forceRedraw)
+    local orderedBatches = orig(room, triggersList, viewport, registeredTriggers, forceRedraw)
     return orderedBatches
-  end
+end)
 
-  -- 重新覆盖方法
-  local depthBatchingFunctions = hook.get_local(celesteRender.forceRoomBatchRender, "depthBatchingFunctions")
-  for _, value in ipairs(depthBatchingFunctions) do
-    if value[1] == "Triggers" then
-      value[3] = celesteRender.getTriggerBatch
-    end
+-- 重新覆盖方法(钩成功了=覆盖, 钩失败了相当于自己覆盖自己)
+local depthBatchingFunctions = hook.get_local(celesteRender.forceRoomBatchRender, "depthBatchingFunctions")
+for _, value in ipairs(depthBatchingFunctions) do
+  if value[1] == "Triggers" then
+    value[3] = celesteRender.getTriggerBatch
   end
 end
-
 
 -- 在创建 canvas 和 绘制 的时候根据字号改变缩放倍率
 local roomCache = hook.get_local(celesteRender.releaseBatch, "roomCache")
 
-hook.hook_local_func(celesteRender.forceRoomCanvasRender, "getRoomCanvas", function(orig, room, state, selected)
+hook.hook_local_func(celesteRender, "getRoomCanvas", celesteRender.forceRoomCanvasRender, function(orig, room, state, selected)
   roomCache = hook.get_local(celesteRender.releaseBatch, "roomCache")
   local viewport = state.viewport
   local orderedBatches = celesteRender.getRoomBatches(room, state)
@@ -425,11 +381,7 @@ end)
 
 -- 在应用 canvas 的时候根据字号改变缩放倍率
 local orig_love_graphics_draw = love.graphics.draw
-if not rawget(celesteRender, "drawRoom_hooked_by_FontLoennPlugin") then
-  rawset(celesteRender, "drawRoom_hooked_by_FontLoennPlugin", true)
-
-  local orig_draw_room = celesteRender.drawRoom
-  function celesteRender.drawRoom(room, state, selected, visible)
+hook.hookOnce(celesteRender, "drawRoom", celesteRender.drawRoom, function (orig, room, state, selected, visible)
     -- trick
     local redraw = selected or hook.get_local(celesteRender.drawRoom, "ALWAYS_REDRAW_UNSELECTED_ROOMS")
 
@@ -440,25 +392,17 @@ if not rawget(celesteRender, "drawRoom_hooked_by_FontLoennPlugin") then
       end
       orig_love_graphics_draw(texture, 0, 0, 0, fonts.fontScale, fonts.fontScale)
     end
-    orig_draw_room(room, state, selected, visible)
+    orig(room, state, selected, visible)
     love.graphics.draw = orig_love_graphics_draw
-  end
-end
-
+end)
 
 
 -- 修改 trigger 之类的像素字体大小
-if not drawableText.hooked_by_FontLoennPlugin then
-  drawableText.hooked_by_FontLoennPlugin = true
-
-  local orig_drawableText_fromText = drawableText.fromText
-  function drawableText.fromText(text, x, y, width, height, font, fontSize, color)
+hook.hookOnce(drawableText, "fromText", drawableText.fromText, function (orig, text, x, y, width, height, font, fontSize, color)
     fontSize = fontSize or 0
-    local drawable = orig_drawableText_fromText(text, x, y, width, height, font, fontSize * fonts.fontScale, color)
+    local drawable = orig(text, x, y, width, height, font, fontSize * fonts.fontScale, color)
     return drawable
-  end
-end
-
+end)
 
 -- 记录 placement 获取 drawable 的时机, 因为 placement draw 的时候会把像素颜色设为白色, 所以阴影反而会导致糊掉, 所以此时不渲染阴影
 local duringPlacement = false
@@ -467,16 +411,12 @@ local function tryHookPlacement()
   if not placement then
     return
   end
-  if not placement.hooked_by_FontLoennPlugin then
-    placement.hooked_by_FontLoennPlugin = true
 
-    local orig_update = placement.update
-    function placement.update(dt)
+  hook.hookOnce(placement, "update", placement.update, function (orig, dt)
       duringPlacement = true
-      orig_update(dt)
+      orig(dt)
       duringPlacement = false
-    end
-  end
+  end)
 end
 
 
@@ -485,7 +425,7 @@ local function tryHookSelection()
   if not selection then
     return
   end
-  hook.hook_local_func(selection.mousereleased, "selectionFinished", function(orig, x, y, fromClick)
+  hook.hook_local_func(selection, "selectionFinished", selection.mousereleased, function(orig, x, y, fromClick)
     local room = state.getSelectedRoom()
     orig(x, y, fromClick)
     -- rebuild batch
@@ -523,7 +463,7 @@ local function tryHookSelection()
   end
 
   -- 选中 trigger 字体的时候可以选中 trigger
-  hook.hook_local_func(selection.mouseclicked, "selectionChanged", function(orig, x, y, width, height, fromClick)
+  hook.hook_local_func(selection, "selectionChanged", selection.mouseclicked, function(orig, x, y, width, height, fromClick)
     if (fromClick and modSettings.selectTriggerByClickText and (selection.layer == "triggers" or type(selection.layer) == "table" and selection.layer._persistenceName == "AllLayers")) then
       local room = state.getSelectedRoom()
       if roomToTriggerToTextRects[room] ~= nil then
@@ -550,28 +490,19 @@ end
 
 
 local editor = sceneHandler.scenes["Editor"]
-if not rawget(editor, "hooked_by_FontLoennPlugin") then
-  editor.hooked_by_FontLoennPlugin = true
-
-  local orig_firstEnter = editor.firstEnter
-  function editor.firstEnter(self)
-    orig_firstEnter(self)
+hook.hookOnce(editor, "firstEnter", editor.firstEnter, function (orig, self)
+    orig(self)
     tryHookPlacement()
     tryHookSelection()
-  end
-end
+end)
+
 
 -- ctrl + f5 会生成新的 tools 实例, 所以得重新钩一次
-if not rawget(debugUtils, "hooked_by_FontLoennPlugin") then
-  debugUtils.hooked_by_FontLoennPlugin = true
-
-  local orig_reloadEverything = debugUtils.reloadEverything
-  function debugUtils.reloadEverything(self)
-    orig_reloadEverything(self)
+hook.hookOnce(debugUtils, "reloadEverything", debugUtils.reloadEverything, function (orig, self)
+    orig(self)
     tryHookPlacement()
     tryHookSelection()
-  end
-end
+end)
 
 local function setFontScrollWrapper(scrollFunc, force)
   if not modSettings.autoSwitchFont then
@@ -600,20 +531,12 @@ function setFontByCurrentScroll()
 end
 
 -- 监听 scroll 尝试自动切换字体
-if not rawget(viewport_handler, "hooked_by_FontLoennPlugin") then
-  viewport_handler.hooked_by_FontLoennPlugin = true
-
-  local orig_zoomIn = viewport_handler.zoomIn
-  function viewport_handler.zoomIn()
-    setFontScrollWrapper(orig_zoomIn)
-  end
-
-  local orig_zoomOut = viewport_handler.zoomOut
-  function viewport_handler.zoomOut()
-    setFontScrollWrapper(orig_zoomOut)
-  end
-end
-
+hook.hookOnce(viewport_handler, "zoomIn", viewport_handler.zoomIn, function (orig)
+    setFontScrollWrapper(orig)
+end)
+hook.hookOnce(viewport_handler, "zoomOut", viewport_handler.zoomOut, function (orig)
+    setFontScrollWrapper(orig)
+end)
 
 
 local function isItemSelected(item, selections)
@@ -632,13 +555,8 @@ end
 
 -- 为高清像素字体添加阴影
 -- 在 task 创建完 batch 后, 尝试调整 trigger 字体的位置(不知道 lua 有没有类似 il 一样的插入方式, 感觉还是直接整体替换方便点, 反正我一个版本更一版应该问题不大())
-if not triggerHandler.hooked_by_FontLoennPlugin then
-  triggerHandler.hooked_by_FontLoennPlugin = true
-
-  local orig_trigger_getDrawable = triggerHandler.getDrawable
-  function triggerHandler.getDrawable(name, handler, room, trigger, viewport)
-    local drawables, _ = orig_trigger_getDrawable(name, handler, room, trigger, viewport)
-
+hook.hookOnce(triggerHandler, "getDrawable", triggerHandler.getDrawable, function (orig, name, handler, room, trigger, viewport)
+    local drawables, _ = orig(name, handler, room, trigger, viewport)
 
     local addShadow = modSettings.addShadowToFont and not duringPlacement
     local extrudeTriggerText = modSettings.extrudeOverlappingTriggerText
@@ -722,29 +640,21 @@ if not triggerHandler.hooked_by_FontLoennPlugin then
 
 
     return drawables, depths.triggers
-  end
-end
-
+end)
 
 
 -- 修改标题字体(因为注册时机比较晚, 所以没办法一开始的时候直接切换 loading 字体)
 -- 因为 Loenn 加载场景是先 rerequire 场景的 lua, 然后通过深拷贝实现的, 所以我们得通过索引拿而不是 require 拿
 local loading = sceneHandler.scenes["Loading"]
 -- 因为访问 scene 中不存在的元素实际上会给 input_device 发一个通知, 而不会返回 nil, 所以这里要 rawget
-if not rawget(loading, "hooked_by_FontLoennPlugin") then
-  loading.hooked_by_FontLoennPlugin = true
-
-  local orig_loading_setText = loading.setText
-  function loading:setText(text)
-    orig_loading_setText(self, text)
+hook.hookOnce(loading, "setText", loading.setText, function (orig, self, text)
+    orig(self, text)
     self.textScale = fonts.fontScale * 8
     self.textOffsetX = (fonts.font:getWidth(self.text .. "..") * self.textScale) / 2
-  end
+end)
 
-  local language = languageRegistry.getLanguage()
-  loading:setText(language.scenes.loading.loading)
-end
-
+local language = languageRegistry.getLanguage()
+loading:setText(language.scenes.loading.loading)
 
 
 function clearExtrudedTriggerTextCache()
@@ -758,6 +668,7 @@ function clearAllCaches()
   celesteRender.clearBatchingTasks()
   celesteRender.invalidateRoomCache()
   clearExtrudedTriggerTextCache()
+  triggerTextStretcher:clearCache()
 end
 
 -- events

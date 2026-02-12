@@ -8,7 +8,7 @@
 * **Extrude Trigger Text When Overlapping**: 当 Trigger 文本挤在一起的时候, 是否自动将它们分开
 * **Highlight Trigger Text On Selected**: 当你选中 Trigger 的时候是否高亮(标黄)其文本
 * **Add Shadow To Font**: 是否为 Trigger 文本添加阴影
-* **Stretch Text On Small Trigger**: 当 Trigger 特别小的时候是否拉伸其文本使其更易阅读
+* **Show Complete Word**: 是否保证每个单词显示完整, 而不是被切分到多行里
 * **Select Trigger By Click Text**: 你可以通过点击 Trigger 文本选中 Trigger, 方便你在一堆重叠 Trigger 一下选中自己想要的
 * **Auto Switch Font**: 该插件会自动根据界面滚动缩放调整字体
 
@@ -26,7 +26,7 @@ You can selectively enable features via the menu: **View → Font Loenn Plugin**
 * **Extrude Trigger Text When Overlapping**: Automatically separates trigger texts when they overlap
 * **Highlight Trigger Text On Selected**: Highlights (in yellow) trigger text when it is selected
 * **Add Shadow To Font**: Adds a shadow to trigger text
-* **Stretch Text On Small Trigger**: Whether to stretch trigger text to make it readable when the trigger is really tiny!
+* **Show Complete Word**: Ensure words in trigger text show complete, instead of being split into multi-lines
 * **Select Trigger By Click Text**: You can select a trigger by clicking its text when there are so many overlapped triggers!
 * **Auto Switch Font**: This plugin will adjust font automatically by scrolling scale
 

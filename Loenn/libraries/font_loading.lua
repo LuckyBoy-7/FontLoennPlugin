@@ -138,7 +138,11 @@ local function injectCheckboxes()
                 function() return modSettings.autoSwitchFont end)
 end
 
-injectCheckboxes()
+
+if not rawget(menubar, "FontLoennPlugin_HaveAddMenu")  then
+  rawset(menubar, "FontLoennPlugin_HaveAddMenu", true)
+  injectCheckboxes()
+end
 
 
 local pico8FontPath = "fonts/pico8_font.png"

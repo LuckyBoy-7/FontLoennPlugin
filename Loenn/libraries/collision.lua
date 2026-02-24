@@ -1,3 +1,6 @@
+local mods = require("mods")
+local modSettings = mods.getModSettings("FontLoennPlugin")
+
 -- collision.lua
 -- 矩形碰撞检测和分离系统
 
@@ -10,7 +13,7 @@ local CONFIG = {
     CENTER_TOLERANCE = 7, -- 中心点误差容忍范围, 如果在范围内, 就当作是在一个中心, 以便提前以更好看的方式排列, 7 刚好小于一格
     MoveDistRatio = 1,    -- 每次慢慢移动太墨迹了, 尝试以一定倍率移动
     NEIGHBOUR_CHECK_PADDING = 3,
-    PADDING_MAX_NEIGHBOUR = 6,    
+    PADDING_MAX_NEIGHBOUR = 6,
 }
 
 local rectCollidedNeighbourCount = {}
@@ -43,6 +46,9 @@ end
 
 -- 检查矩形是否完全在房间外
 local function isRectOutsideRoom(rect, roomRect)
+    if not modSettings.ignoreOutOfRoomTextExtruding then
+        return false
+    end
     if not roomRect then
         return false
     end
@@ -207,7 +213,7 @@ local function performCollisionIteration(rects, roomRect)
                     local averageNeighbourDensity = (rectCollidedNeighbourCount[i] + rectCollidedNeighbourCount[j]) / 2
                     local padding = CONFIG.PADDING * averageNeighbourDensity / CONFIG.PADDING_MAX_NEIGHBOUR
                     if padding > CONFIG.PADDING then
-                        padding=CONFIG.PADDING
+                        padding = CONFIG.PADDING
                     end
 
                     local overlapX, overlapY = getOverlap(rectA, rectB, padding)
@@ -321,8 +327,8 @@ end
 
 function collision.rectContainsPoint(rect, x, y, padding)
     padding = padding or 0
-    return x >= rect.x - padding and x < rect.x + rect.width + padding and y >= rect.y - padding and y < rect.y + rect.height + padding
+    return x >= rect.x - padding and x < rect.x + rect.width + padding and y >= rect.y - padding and
+        y < rect.y + rect.height + padding
 end
-
 
 return collision

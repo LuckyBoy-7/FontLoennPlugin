@@ -6,6 +6,7 @@
 
 * **Use Hires Pixel Font**: 是否启用高清像素字体
 * **Extrude Trigger Text When Overlapping**: 当 Trigger 文本挤在一起的时候, 是否自动将它们分开
+* **Ignore Out Of Room Text Extruding**: 当 Trigger 文本在房间外的时候是否不参与上述的 Extrude
 * **Highlight Trigger Text On Selected**: 当你选中 Trigger 的时候是否高亮(标黄)其文本
 * **Add Shadow To Font**: 是否为 Trigger 文本添加阴影
 * **Show Complete Word**: 是否保证每个单词显示完整, 而不是被切分到多行里
@@ -24,6 +25,7 @@ You can selectively enable features via the menu: **View → Font Loenn Plugin**
 
 * **Use Hires Pixel Font**: Enables the high-resolution pixel font
 * **Extrude Trigger Text When Overlapping**: Automatically separates trigger texts when they overlap
+* **Ignore Out Of Room Text Extruding**: Ignore Trigger Text Extruding when they are out of room
 * **Highlight Trigger Text On Selected**: Highlights (in yellow) trigger text when it is selected
 * **Add Shadow To Font**: Adds a shadow to trigger text
 * **Show Complete Word**: Ensure words in trigger text show complete, instead of being split into multi-lines
